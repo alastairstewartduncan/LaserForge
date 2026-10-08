@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using LaserForge.App.Controls;
 using LaserForge.App.Dialogs;
 using LaserForge.App.Services;
+using LaserForge.Core;
 using LaserForge.Core.Gcode;
 using LaserForge.Core.Generators;
 using LaserForge.Core.Grbl;
@@ -105,7 +106,7 @@ public partial class MainWindow : Window
     }
 
     private void UpdateTitle() =>
-        Title = $"LaserForge – {(_filePath != null ? Path.GetFileName(_filePath) : "Untitled")}{(_dirty ? " *" : "")}";
+        Title = $"{AppInfo.Product} {AppInfo.Version} – {(_filePath != null ? Path.GetFileName(_filePath) : "Untitled")}{(_dirty ? " *" : "")}";
 
     private bool ConfirmDiscard()
     {
@@ -946,6 +947,15 @@ public partial class MainWindow : Window
         _statusTimer.Stop();
         _transport?.Dispose();
     }
+
+    // ================================================================== help menu
+
+    private void About_Click(object sender, RoutedEventArgs e) => new AboutWindow(this).ShowDialog();
+
+    private void GitHub_Click(object sender, RoutedEventArgs e) => AboutWindow.OpenUrl(AppInfo.RepositoryUrl);
+
+    private void ReportIssue_Click(object sender, RoutedEventArgs e) =>
+        AboutWindow.OpenUrl($"{AppInfo.RepositoryUrl}/issues/new?body={Uri.EscapeDataString("\n\n---\n" + AboutWindow.DetailsText())}");
 
     // ================================================================== helpers
 

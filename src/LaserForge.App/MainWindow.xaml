@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:LaserForge.App.Controls"
         Title="LaserForge" Width="1440" Height="900" MinWidth="1000" MinHeight="600"
-        WindowStartupLocation="CenterScreen"
+        WindowStartupLocation="CenterScreen" Icon="/Assets/LaserForge.ico"
         PreviewKeyDown="Window_PreviewKeyDown" Closing="Window_Closing">
 
     <DockPanel>
@@ -47,6 +47,12 @@
                 <MenuItem Header="Zoom to _fit" InputGestureText="F" Click="ZoomFit_Click" />
                 <MenuItem x:Name="PreviewMenu" Header="_Preview raster (show dithered dots)" IsCheckable="True" Click="PreviewRaster_Click" />
                 <MenuItem x:Name="SnapMenu" Header="_Snap to 1 mm grid" IsCheckable="True" IsChecked="True" Click="Snap_Click" />
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="LaserForge on _GitHub" Click="GitHub_Click" />
+                <MenuItem Header="Report an _issue…" Click="ReportIssue_Click" />
+                <Separator />
+                <MenuItem Header="_About LaserForge" Click="About_Click" />
             </MenuItem>
         </Menu>
 

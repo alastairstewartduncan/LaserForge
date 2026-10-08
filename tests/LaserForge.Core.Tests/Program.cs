@@ -364,6 +364,15 @@ internal static class GrblTests
 
 internal static class ProjectTests
 {
+    [Test] static void VersionAndAuthorStamped()
+    {
+        Assert.True(Regex.IsMatch(AppInfo.Version, @"^\d+\.\d+\.\d+$"), "semantic version: " + AppInfo.Version);
+        Assert.Equal("Alastair Stewart Duncan", AppInfo.Author);
+        Assert.Equal("alastair@aduncan.co.uk", AppInfo.AuthorEmail);
+        var job = GcodeGenerator.Generate(LaserProject.CreateDefault());
+        Assert.True(job.Lines[0].Contains("LaserForge " + AppInfo.Version), job.Lines[0]);
+    }
+
     [Test] static void RoundTripsJson()
     {
         var p = LaserProject.CreateDefault();

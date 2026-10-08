@@ -9,10 +9,15 @@
     <RootNamespace>LaserForge.App</RootNamespace>
     <AssemblyName>LaserForge</AssemblyName>
     <ApplicationTitle>LaserForge</ApplicationTitle>
-    <Version>0.1.0</Version>
+    <ApplicationIcon>Assets\LaserForge.ico</ApplicationIcon>
     <!-- Lets the solution restore/build on non-Windows CI agents too (the app only runs on Windows). -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\LaserForge.ico" />
+    <Resource Include="Assets\logo-256.png" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />

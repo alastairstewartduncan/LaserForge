@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo-wordmark.svg" alt="LaserForge" width="520"></p>
+
 # LaserForge
 
 A Windows design-and-burn app for **GRBL diode lasers** (xTool, Atomstack, Sculpfun, Ortur, Two Trees, NEJE and similar). Draw or import artwork, assign it to layers with their own speed and power, frame the job to check size and placement, then stream it to the laser over USB.
@@ -76,6 +78,16 @@ Shortcuts: `V` select, `R` rectangle, `E` ellipse, `G` polygon, `L` line, `P` pe
 ## Safety
 
 Lasers start fires and cause permanent eye damage. Always wear safety glasses rated for your laser's wavelength (typically 445–455 nm for diodes). Never leave a running job unattended, and keep an extinguisher within reach. **Stop** sends a feed hold followed by a GRBL soft reset, which kills the beam immediately. It does not replace your machine's physical emergency stop.
+
+## Versioning
+
+The version is set once in `Directory.Build.props` (`VersionPrefix`). CI stamps each build with its run number and commit, so **Help → About** shows something like `0.1.1 (build 12, a1b2c3d)`. Generated G-code files record the version in their header. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+## Author
+
+**Alastair Stewart Duncan** – [alastair@aduncan.co.uk](mailto:alastair@aduncan.co.uk)
+
+© 2026 Alastair Stewart Duncan. All rights reserved.
 
 ## Roadmap ideas
 

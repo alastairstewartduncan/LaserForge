@@ -14,6 +14,7 @@ public sealed class FormDialog : Window
     {
         Title = title;
         Owner = owner;
+        Icon = owner?.Icon;
         SizeToContent = SizeToContent.WidthAndHeight;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;

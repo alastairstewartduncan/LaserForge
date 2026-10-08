@@ -1,0 +1,27 @@
+<Project>
+  <!--
+    Shared version and author details for every project in the solution.
+    Bump VersionPrefix for each release and add an entry to CHANGELOG.md.
+    CI passes the build number and commit, so a CI build shows e.g. "0.1.1+a1b2c3d (build 12)".
+  -->
+  <PropertyGroup>
+    <VersionPrefix>0.1.1</VersionPrefix>
+    <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
+    <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
+    <FileVersion>$(VersionPrefix).$(BuildNumber)</FileVersion>
+
+    <Product>LaserForge</Product>
+    <Authors>Alastair Stewart Duncan</Authors>
+    <Company>Alastair Stewart Duncan</Company>
+    <Copyright>© 2026 Alastair Stewart Duncan. All rights reserved.</Copyright>
+    <Description>Design, engrave and cut with GRBL diode lasers.</Description>
+    <RepositoryUrl>https://github.com/alastairstewartduncan/LaserForge</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="AuthorEmail" Value="alastair@aduncan.co.uk" />
+    <AssemblyMetadata Include="RepositoryUrl" Value="$(RepositoryUrl)" />
+    <AssemblyMetadata Include="BuildNumber" Value="$(BuildNumber)" />
+  </ItemGroup>
+</Project>
