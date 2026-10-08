@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LaserForge.Core</RootNamespace>
+    <!-- The core engine deliberately has no package dependencies so it can be
+         built and unit-tested on any OS, independent of the WPF front end. -->
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Dependency-free self-test runner: dotnet run (project tests/LaserForge.Core.Tests).
+       Exit code is non-zero if any test fails, so it works in CI. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LaserForge.Core\LaserForge.Core.csproj" />
+  </ItemGroup>
+
+</Project>
