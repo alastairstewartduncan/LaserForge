@@ -17,18 +17,18 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore LaserForge.sln
+        run: dotnet restore AsdLasercraft.sln
 
       - name: Build
-        run: dotnet build LaserForge.sln -c Release --no-restore -p:BuildNumber=${{ github.run_number }}
+        run: dotnet build AsdLasercraft.sln -c Release --no-restore -p:BuildNumber=${{ github.run_number }}
 
       - name: Core tests
-        run: dotnet run --project tests/LaserForge.Core.Tests -c Release --no-build
+        run: dotnet run --project tests/AsdLasercraft.Core.Tests -c Release --no-build
 
       - name: Publish Windows app (self-contained, single file)
-        run: dotnet publish src/LaserForge.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:BuildNumber=${{ github.run_number }} -o publish
+        run: dotnet publish src/AsdLasercraft.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:BuildNumber=${{ github.run_number }} -o publish
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LaserForge-win-x64-build${{ github.run_number }}
+          name: AsdLasercraft-win-x64-build${{ github.run_number }}
           path: publish/

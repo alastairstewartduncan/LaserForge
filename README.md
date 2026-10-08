@@ -1,6 +1,6 @@
-<p align="center"><img src="assets/logo-wordmark.svg" alt="LaserForge" width="520"></p>
+<p align="center"><img src="assets/logo-wordmark.svg" alt="A·S·D Lasercraft" width="560"></p>
 
-# LaserForge
+# A·S·D Lasercraft
 
 A Windows design-and-burn app for **GRBL diode lasers** (xTool, Atomstack, Sculpfun, Ortur, Two Trees, NEJE and similar). Draw or import artwork, assign it to layers with their own speed and power, frame the job to check size and placement, then stream it to the laser over USB.
 
@@ -23,8 +23,8 @@ A Windows design-and-burn app for **GRBL diode lasers** (xTool, Atomstack, Sculp
 ## Project layout
 
 ```
-LaserForge.sln
-├─ src/LaserForge.Core      Pure .NET 8 engine, no UI or package dependencies
+AsdLasercraft.sln
+├─ src/AsdLasercraft.Core      Pure .NET 8 engine, no UI or package dependencies
 │   ├─ Geometry             Vec2, Bounds, Polyline, Transform2D, curve/arc flattening
 │   ├─ Model                LaserProject, Layer, VectorShape, ImageShape, ShapeFactory, MachineProfile
 │   ├─ Imaging              Adjust → resample to line interval → dither
@@ -32,12 +32,12 @@ LaserForge.sln
 │   ├─ Grbl                 Character-counting streamer, status parser, error codes
 │   ├─ Import               SVG importer
 │   ├─ Generators           Material test grid, seven-segment label font
-│   └─ Serialization        .lfp JSON project files, snapshot undo/redo
-├─ src/LaserForge.App       WPF front end (Windows only)
+│   └─ Serialization        .asdl JSON project files, snapshot undo/redo
+├─ src/AsdLasercraft.App       WPF front end (Windows only)
 │   ├─ Controls/DesignCanvas.cs   Zoom/pan work area, selection, drawing tools
 │   ├─ Services                   Serial port, image loading, text-to-outline
 │   └─ MainWindow.xaml(.cs)       Menus, layers panel, properties, laser control
-└─ tests/LaserForge.Core.Tests    Dependency-free test runner (29 tests)
+└─ tests/AsdLasercraft.Core.Tests    Dependency-free test runner (29 tests)
 ```
 
 ## Build and run
@@ -46,16 +46,16 @@ You need Windows 10/11 and the [.NET 8 SDK](https://dotnet.microsoft.com/downloa
 
 ```powershell
 git clone <this repo>
-cd LaserForge
-dotnet run --project src/LaserForge.App            # run the app
-dotnet run --project tests/LaserForge.Core.Tests   # run the engine tests
+cd LaserForge   # repo folder
+dotnet run --project src/AsdLasercraft.App            # run the app
+dotnet run --project tests/AsdLasercraft.Core.Tests   # run the engine tests
 ```
 
-Each push to `main` is built on GitHub Actions. A self-contained `LaserForge.exe` is published as a build artifact, with no .NET install needed.
+Each push to `main` is built on GitHub Actions. A self-contained `AsdLasercraft.exe` is published as a build artifact, with no .NET install needed.
 
 ## Setting up your laser
 
-LaserForge assumes **GRBL 1.1 in laser mode**. Check these settings once from the Laser tab console (send `$$` to list them):
+A·S·D Lasercraft assumes **GRBL 1.1 in laser mode**. Check these settings once from the Laser tab console (send `$$` to list them):
 
 | Setting | Meaning | Typical value |
 |---|---|---|
@@ -81,7 +81,7 @@ Lasers start fires and cause permanent eye damage. Always wear safety glasses ra
 
 ## Versioning
 
-The version is set once in `Directory.Build.props` (`VersionPrefix`). CI stamps each build with its run number and commit, so **Help → About** shows something like `0.1.1 (build 12, a1b2c3d)`. Generated G-code files record the version in their header. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+The version is set once in `Directory.Build.props` (`VersionPrefix`). CI stamps each build with its run number and commit, so **Help → About** shows something like `0.2.0 (build 12, a1b2c3d)`. Generated G-code files record the version in their header. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Author
 

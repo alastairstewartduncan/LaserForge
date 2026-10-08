@@ -1,6 +1,14 @@
 # Changelog
 
-All notable changes to LaserForge. Versions follow [semantic versioning](https://semver.org).
+All notable changes to A·S·D Lasercraft (formerly LaserForge). Versions follow [semantic versioning](https://semver.org).
+
+## [0.2.0] – 2026-10-08
+
+### Changed
+- Renamed from LaserForge to **A·S·D Lasercraft**, because other products already use the LaserForge name.
+- New logo: the A·S·D initials being engraved by the laser head, used for the app icon, About box and README.
+- Projects, namespaces and the executable are now `AsdLasercraft.*` / `AsdLasercraft.exe`.
+- Project files now use the `.asdl` extension.
 
 ## [0.1.1] – 2026-10-08
 
