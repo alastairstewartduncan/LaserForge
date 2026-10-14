@@ -8,16 +8,27 @@ namespace AsdLasercraft.Core.Gcode;
 /// </summary>
 public static class PathOrdering
 {
-    public static List<Polyline> Order(IReadOnlyList<Polyline> paths, Vec2 start)
+    /// <summary>
+    /// How many closed paths surround each path. 0 = outermost (a part's outline), 1 = a hole in it,
+    /// 2 = an island inside the hole, and so on.
+    /// </summary>
+    public static int[] NestingDepths(IReadOnlyList<Polyline> paths)
     {
         int n = paths.Count;
         var bounds = paths.Select(p => p.Bounds).ToArray();
         var depth = new int[n];
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++)
-                if (i != j && paths[j].Closed && bounds[j].Contains(bounds[i]) && bounds[j].Area > bounds[i].Area
-                    && paths[j].ContainsPoint(paths[i].Points[0]))
+                if (i != j && paths[j].Closed && paths[i].Points.Count > 0 && bounds[j].Contains(bounds[i])
+                    && bounds[j].Area > bounds[i].Area && paths[j].ContainsPoint(paths[i].Points[0]))
                     depth[i]++;
+        return depth;
+    }
+
+    public static List<Polyline> Order(IReadOnlyList<Polyline> paths, Vec2 start)
+    {
+        int n = paths.Count;
+        var depth = NestingDepths(paths);
 
         var result = new List<Polyline>(n);
         var pos = start;

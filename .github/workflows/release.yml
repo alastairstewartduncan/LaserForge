@@ -1,0 +1,59 @@
+name: Release
+
+# Push a tag like v0.3.0 to build, test and publish a GitHub release with the installer and a portable zip.
+# The app's update check looks at the latest release, so users are told about it automatically.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Check the tag matches the version
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.VersionPrefix
+          if ("v$version" -ne "${{ github.ref_name }}") { Write-Host "::error::Tag ${{ github.ref_name }} doesn't match VersionPrefix $version"; exit 1 }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Test
+        run: dotnet run --project tests/AsdLasercraft.Core.Tests -c Release
+
+      - name: Publish
+        run: dotnet publish src/AsdLasercraft.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:BuildNumber=${{ github.run_number }} -o publish
+
+      - name: Installer and zip
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc "/DAppVersion=$env:VERSION" installer\AsdLasercraft.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path publish\* -DestinationPath "artifacts\installer\AsdLasercraft-$env:VERSION-portable.zip"
+
+      - name: Release notes from CHANGELOG
+        shell: pwsh
+        run: |
+          $lines = Get-Content CHANGELOG.md
+          $start = ($lines | Select-String -Pattern "^## \[$env:VERSION\]").LineNumber
+          if (-not $start) { "See CHANGELOG.md" | Out-File notes.md; exit 0 }
+          $rest = $lines[$start..($lines.Length - 1)]
+          $end = ($rest | Select-String -Pattern '^## \[').LineNumber | Select-Object -First 1
+          if ($end) { $rest = $rest[0..($end - 2)] }
+          $rest | Out-File notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ github.ref_name }} artifacts/installer/* --title "A·S·D Lasercraft ${{ env.VERSION }}" --notes-file notes.md
