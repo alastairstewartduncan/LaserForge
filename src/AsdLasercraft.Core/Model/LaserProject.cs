@@ -38,9 +38,9 @@ public sealed class LaserProject
 
     public static Layer DefaultLayer(LayerMode mode) => mode switch
     {
-        LayerMode.Fill => new Layer { Name = "Engrave", ColorHex = "#1E5AFF", Mode = LayerMode.Fill, SpeedMmMin = 3000, PowerPercent = 30, LineIntervalMm = 0.1 },
-        LayerMode.Image => new Layer { Name = "Image", ColorHex = "#2EA043", Mode = LayerMode.Image, SpeedMmMin = 3000, PowerPercent = 40, LineIntervalMm = 0.1 },
-        _ => new Layer { Name = "Cut", ColorHex = "#E5341C", Mode = LayerMode.Line, SpeedMmMin = 300, PowerPercent = 100, Passes = 2 },
+        LayerMode.Fill => new Layer { Name = "Engrave", ColorHex = "#4C8DFF", Mode = LayerMode.Fill, SpeedMmMin = 3000, PowerPercent = 30, LineIntervalMm = 0.1 },
+        LayerMode.Image => new Layer { Name = "Image", ColorHex = "#3DDC97", Mode = LayerMode.Image, SpeedMmMin = 3000, PowerPercent = 40, LineIntervalMm = 0.1 },
+        _ => new Layer { Name = "Cut", ColorHex = "#FF4D5E", Mode = LayerMode.Line, SpeedMmMin = 300, PowerPercent = 100, Passes = 2 },
     };
 
     public static LaserProject CreateDefault()

@@ -110,6 +110,8 @@ internal static class GoldenTests
         if (!File.Exists(goldenPath))
         {
             Console.WriteLine($"  NOTE  golden file '{name}.gcode' not found; output written to artifacts/golden-actual");
+            if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+                Console.WriteLine($"::warning title=Golden file missing::{name}.gcode – push a commit containing [update-golden] to create it");
             return;
         }
 
