@@ -296,7 +296,7 @@
                                                 </DataGridTemplateColumn>
                                                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" />
                                                 <DataGridComboBoxColumn x:Name="ModeColumn" Header="Mode" SelectedItemBinding="{Binding Mode}" Width="66" />
-                                                <DataGridTextColumn Header="mm/min" Binding="{Binding SpeedMmMin}" Width="54" />
+                                                <DataGridTextColumn Header="Speed" Binding="{Binding SpeedMmMin}" Width="54" />
                                                 <DataGridTextColumn Header="Power" Binding="{Binding PowerPercent}" Width="46" />
                                                 <DataGridTextColumn Header="Pass" Binding="{Binding Passes}" Width="34" />
                                                 <DataGridCheckBoxColumn Header="Out" Binding="{Binding Output}" Width="32"
