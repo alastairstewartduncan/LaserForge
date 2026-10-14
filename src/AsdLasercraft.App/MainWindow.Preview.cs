@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using AsdLasercraft.App.Controls;
 using AsdLasercraft.Core.Gcode;
+using AsdLasercraft.Core.Imaging;
 using AsdLasercraft.Core.Model;
 using AsdLasercraft.Core.Serialization;
 using CoreShape = AsdLasercraft.Core.Model.Shape;
@@ -97,6 +98,7 @@ public partial class MainWindow
         var rasterLayers = _project.Layers.Where(l => l.Output && l.Mode != LayerMode.Line && _project.ShapesOn(l).Any()).ToList();
         double burnWidth = rasterLayers.Count > 0 ? rasterLayers.Min(l => l.LineIntervalMm) : 0.15;
         var sim = new SimulationData(job, burnWidth);
+        AddRasterOverlays(sim);
         Surface.Simulation = sim;
         Surface.SimulationTime = 0;
         Surface.ShowTravel = SimTravelToggle.IsChecked == true;
@@ -110,6 +112,41 @@ public partial class MainWindow
         SyncSimulateToggles();
         Surface.InvalidateVisual();
         if (autoPlay) PlaySimulation();
+    }
+
+    /// <summary>Gives every burned image a bitmap overlay so its tone shows at any zoom level.</summary>
+    private void AddRasterOverlays(SimulationData sim)
+    {
+        var moves = sim.Moves;
+        for (int li = 0; li < _project.Layers.Count; li++)
+        {
+            var layer = _project.Layers[li];
+            if (!layer.Output || layer.Mode != LayerMode.Image) continue;
+            foreach (var img in _project.ShapesOn(layer).OfType<ImageShape>())
+            {
+                var b = img.GetBounds();
+                double slack = layer.OverscanMm + 1;
+                int first = -1, last = -1;
+                for (int i = 0; i < moves.Count; i++)
+                {
+                    var m = moves[i];
+                    if (m.LayerIndex != li || m.PowerFraction <= 0) continue;
+                    if (m.From.X < b.MinX - slack || m.From.X > b.MaxX + slack || m.From.Y < b.MinY - 0.01 || m.From.Y > b.MaxY + 0.01) continue;
+                    if (first < 0) first = i;
+                    last = i;
+                }
+                if (first < 0) continue; // not part of this job (e.g. "selection only")
+                var (px, w, h) = ImageProcessor.Prepare(img, layer.LineIntervalMm);
+                sim.Rasters.Add(new SimulationData.RasterOverlay
+                {
+                    Bitmap = SimulationData.BurnBitmap(px, w, h, img.Dither == DitherMode.Grayscale),
+                    RectMm = new Rect(b.MinX, b.MinY, b.Width, b.Height),
+                    FirstMove = first,
+                    LastMove = last,
+                });
+                sim.RasterLayers.Add(li);
+            }
+        }
     }
 
     private void ExitSimulation()

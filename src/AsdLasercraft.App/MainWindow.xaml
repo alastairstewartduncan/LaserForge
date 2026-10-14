@@ -128,7 +128,7 @@
                 <ColumnDefinition Width="58" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="6" />
-                <ColumnDefinition Width="410" MinWidth="340" />
+                <ColumnDefinition Width="436" MinWidth="370" />
             </Grid.ColumnDefinitions>
 
             <!-- tool rail -->
@@ -246,7 +246,7 @@
                                 <c:Glyph Data="{StaticResource I.RotateCcw}" Size="16" />
                             </Button>
                             <Slider x:Name="SimSlider" Grid.Column="2" Margin="8,0" Minimum="0" Maximum="1" ValueChanged="SimSlider_ValueChanged" VerticalAlignment="Center" />
-                            <TextBlock x:Name="SimTimeText" Grid.Column="3" Text="0:00 / 0:00" Width="112" TextAlignment="Center" VerticalAlignment="Center"
+                            <TextBlock x:Name="SimTimeText" Grid.Column="3" Text="0:00 / 0:00" Width="150" TextAlignment="Center" VerticalAlignment="Center"
                                        FontFamily="{StaticResource Font.Mono}" Foreground="{StaticResource Brush.TextMuted}" />
                             <ComboBox x:Name="SimSpeedCombo" Grid.Column="4" Width="78" SelectedIndex="2" SelectionChanged="SimSpeed_Changed" ToolTip="Playback speed">
                                 <ComboBoxItem>1×</ComboBoxItem>
@@ -283,10 +283,10 @@
                                     <StackPanel>
                                         <TextBlock Style="{StaticResource Muted}" FontSize="11.5" Margin="2,0,2,6" Text="Burned top to bottom – keep cuts last." />
                                         <DataGrid x:Name="LayersGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
-                                                  CanUserReorderColumns="False" CanUserResizeRows="False" SelectionMode="Single" Height="186"
+                                                  CanUserReorderColumns="False" CanUserResizeRows="False" SelectionMode="Single" MinHeight="110" MaxHeight="230" FontSize="12.5"
                                                   SelectionChanged="LayersGrid_SelectionChanged" CellEditEnding="LayersGrid_CellEditEnding">
                                             <DataGrid.Columns>
-                                                <DataGridTemplateColumn Header="" Width="26">
+                                                <DataGridTemplateColumn Header="" Width="24">
                                                     <DataGridTemplateColumn.CellTemplate>
                                                         <DataTemplate>
                                                             <Border Background="{Binding ColorHex}" Width="14" Height="14" CornerRadius="4" MouseLeftButtonDown="LayerColor_Click"
@@ -295,13 +295,13 @@
                                                     </DataGridTemplateColumn.CellTemplate>
                                                 </DataGridTemplateColumn>
                                                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" />
-                                                <DataGridComboBoxColumn x:Name="ModeColumn" Header="Mode" SelectedItemBinding="{Binding Mode}" Width="70" />
-                                                <DataGridTextColumn Header="mm/min" Binding="{Binding SpeedMmMin}" Width="58" />
-                                                <DataGridTextColumn Header="Power" Binding="{Binding PowerPercent}" Width="50" />
-                                                <DataGridTextColumn Header="Pass" Binding="{Binding Passes}" Width="40" />
-                                                <DataGridCheckBoxColumn Header="Out" Binding="{Binding Output}" Width="36"
+                                                <DataGridComboBoxColumn x:Name="ModeColumn" Header="Mode" SelectedItemBinding="{Binding Mode}" Width="66" />
+                                                <DataGridTextColumn Header="mm/min" Binding="{Binding SpeedMmMin}" Width="54" />
+                                                <DataGridTextColumn Header="Power" Binding="{Binding PowerPercent}" Width="46" />
+                                                <DataGridTextColumn Header="Pass" Binding="{Binding Passes}" Width="34" />
+                                                <DataGridCheckBoxColumn Header="Out" Binding="{Binding Output}" Width="32"
                                                                         ElementStyle="{StaticResource {x:Type CheckBox}}" EditingElementStyle="{StaticResource {x:Type CheckBox}}" />
-                                                <DataGridCheckBoxColumn Header="Show" Binding="{Binding Visible}" Width="40"
+                                                <DataGridCheckBoxColumn Header="Show" Binding="{Binding Visible}" Width="38"
                                                                         ElementStyle="{StaticResource {x:Type CheckBox}}" EditingElementStyle="{StaticResource {x:Type CheckBox}}" />
                                             </DataGrid.Columns>
                                         </DataGrid>

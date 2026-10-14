@@ -46,7 +46,7 @@
     <SolidColorBrush x:Key="Brush.Warning" Color="{StaticResource C.Warning}" />
     <SolidColorBrush x:Key="Brush.Danger" Color="{StaticResource C.Danger}" />
     <SolidColorBrush x:Key="Brush.DangerSoft" Color="#26FF4D5E" />
-    <SolidColorBrush x:Key="Brush.Selection" Color="#40FF7A1A" />
+    <SolidColorBrush x:Key="Brush.Selection" Color="#26FF7A1A" />
 
     <LinearGradientBrush x:Key="Brush.AccentGradient" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#FF9A3D" Offset="0" />
@@ -760,7 +760,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="DataGridCell">
-                    <Border Background="Transparent" Padding="5,0" SnapsToDevicePixels="True">
+                    <Border Background="Transparent" Padding="4,0" SnapsToDevicePixels="True">
                         <ContentPresenter VerticalAlignment="Center" />
                     </Border>
                 </ControlTemplate>

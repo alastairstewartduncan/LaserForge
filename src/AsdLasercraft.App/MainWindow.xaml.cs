@@ -162,6 +162,8 @@ public partial class MainWindow : Window
     private void UpdateJobEstimate()
     {
         UpdateAnchorMarker();
+        if (!_project.OutputBounds().IsEmpty && (JobText.Text.Length == 0 || JobText.Text.StartsWith("Nothing")))
+            JobText.Text = "Estimating…"; // big rasters take a moment
         int version = ++_estimateVersion;
         var snapshot = ProjectSerializer.DeepClone(_project);
         Task.Run(() => GcodeGenerator.Generate(snapshot)).ContinueWith(t => Ui(() =>

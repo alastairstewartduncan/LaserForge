@@ -333,9 +333,27 @@ public sealed class DesignCanvas : FrameworkElement
                     double f = span > 1e-12 ? Math.Clamp((t - mv.StartSeconds) / span, 0, 1) : 1;
                     to = Vec2.Lerp(mv.From, mv.To, f);
                 }
+                if (sim.IsOverlaid(mv)) continue;
                 if (mv.PowerFraction > 0) dc.DrawLine(burnPens[SimulationData.Bucket(mv.PowerFraction)], SimulationData.P(mv.From), SimulationData.P(to));
                 else if (mv.Rapid && ShowTravel) dc.DrawLine(travelPen, SimulationData.P(mv.From), SimulationData.P(to));
             }
+        }
+
+        // Images: reveal the real burn bitmap down to the row the head is on.
+        foreach (var r in sim.Rasters)
+        {
+            if (current < r.FirstMove) continue;
+            var rect = r.RectMm;
+            if (current < r.LastMove)
+            {
+                double headY = sim.Moves[current].From.Y;
+                double h = Math.Clamp(headY - rect.Y, 0, rect.Height);
+                if (h <= 0) continue;
+                dc.PushClip(new RectangleGeometry(new Rect(rect.X, rect.Y, rect.Width, h)));
+                dc.DrawImage(r.Bitmap, rect);
+                dc.Pop();
+            }
+            else dc.DrawImage(r.Bitmap, rect);
         }
         dc.Pop();
 

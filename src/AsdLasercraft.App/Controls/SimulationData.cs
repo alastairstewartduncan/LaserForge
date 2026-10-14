@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using AsdLasercraft.Core.Gcode;
 using Vec2 = AsdLasercraft.Core.Geometry.Vec2;
 
@@ -37,6 +38,46 @@ public sealed class SimulationData
         }
     }
 
+    /// <summary>
+    /// A raster image shown as its real dithered/greyscale burn bitmap rather than as thousands of overlapping
+    /// scan lines (which would merge into a solid block when zoomed out). Revealed top-down as the head passes.
+    /// </summary>
+    public sealed class RasterOverlay
+    {
+        public required BitmapSource Bitmap;
+        public Rect RectMm;
+        public int FirstMove;
+        public int LastMove;
+    }
+
+    /// <summary>Image overlays, and the layer indices whose burn moves they replace.</summary>
+    public List<RasterOverlay> Rasters { get; } = new();
+    public HashSet<int> RasterLayers { get; } = new();
+
+    /// <summary>True when a move's burn is drawn by a raster overlay instead of as a line.</summary>
+    public bool IsOverlaid(in JobMove m) => m.PowerFraction > 0 && RasterLayers.Contains(m.LayerIndex);
+
+    /// <summary>
+    /// Builds a burn bitmap (orange, alpha = burn strength, transparent where nothing burns) from processed pixels.
+    /// </summary>
+    public static BitmapSource BurnBitmap(byte[] px, int w, int h, bool grayscale)
+    {
+        var bgra = new byte[w * h * 4];
+        for (int i = 0; i < px.Length; i++)
+        {
+            byte v = px[i];
+            if (v >= 255) continue;
+            byte a = grayscale ? (byte)(40 + (255 - v) * 215 / 255) : (byte)235;
+            bgra[i * 4] = 0x3D;     // B
+            bgra[i * 4 + 1] = 0x9A; // G
+            bgra[i * 4 + 2] = 0xFF; // R
+            bgra[i * 4 + 3] = a;
+        }
+        var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, bgra, w * 4);
+        bmp.Freeze();
+        return bmp;
+    }
+
     public GcodeJob Job { get; }
     public IReadOnlyList<JobMove> Moves { get; }
     public double TotalSeconds { get; }
@@ -57,6 +98,7 @@ public sealed class SimulationData
             for (int i = b.Start; i < b.End; i++)
             {
                 var m = Moves[i];
+                if (IsOverlaid(m)) continue;
                 if (m.PowerFraction > 0)
                 {
                     int k = Bucket(m.PowerFraction);
