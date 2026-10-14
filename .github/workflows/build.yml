@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**']
   pull_request:
   workflow_dispatch:
 
@@ -24,6 +24,14 @@ jobs:
 
       - name: Core tests
         run: dotnet run --project tests/AsdLasercraft.Core.Tests -c Release --no-build
+
+      - name: Upload golden G-code output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-actual-build${{ github.run_number }}
+          path: artifacts/golden-actual/
+          if-no-files-found: ignore
 
       - name: Publish Windows app (self-contained, single file)
         run: dotnet publish src/AsdLasercraft.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:BuildNumber=${{ github.run_number }} -o publish

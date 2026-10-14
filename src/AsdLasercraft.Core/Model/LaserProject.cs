@@ -5,10 +5,12 @@ namespace AsdLasercraft.Core.Model;
 /// <summary>A document: layers (with burn settings), the shapes on them and the target machine.</summary>
 public sealed class LaserProject
 {
-    public int FormatVersion { get; set; } = 1;
+    /// <summary>2 = adds job placement, scan offsets, fill angle, kerf and tabs (older files load with defaults).</summary>
+    public int FormatVersion { get; set; } = 2;
     public List<Layer> Layers { get; set; } = new();
     public List<Shape> Shapes { get; set; } = new();
     public MachineProfile Machine { get; set; } = new();
+    public JobSettings Job { get; set; } = new();
 
     public Layer? FindLayer(Guid id) => Layers.FirstOrDefault(l => l.Id == id);
 
