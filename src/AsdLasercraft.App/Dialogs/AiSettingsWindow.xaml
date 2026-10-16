@@ -30,7 +30,7 @@
             <TextBlock x:Name="KeyStatus" Style="{StaticResource Muted}" FontSize="12" Margin="3,5,3,0" TextWrapping="Wrap" />
             <TextBlock Margin="3,6,3,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource Brush.TextMuted}">
                 <Run Text="Get a key from" />
-                <Hyperlink x:Name="ConsoleLink" Click="ConsoleLink_Click" Foreground="{StaticResource Brush.Info}">console.anthropic.com</Hyperlink><Run Text=". Usage is billed to your Anthropic account – typically well under a penny per request. The key is stored encrypted in Windows Credential Manager, never in a file." />
+                <Hyperlink x:Name="ConsoleLink" Click="ConsoleLink_Click" Foreground="{StaticResource Brush.Info}">console.anthropic.com</Hyperlink><Run Text=". Usage is billed to your Anthropic account. The key is stored encrypted in Windows Credential Manager, never in a file." />
             </TextBlock>
 
             <TextBlock Text="MODEL" Style="{StaticResource Caption}" Margin="2,14,2,4" />

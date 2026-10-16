@@ -60,7 +60,18 @@ public partial class TestGridWindow : Window
 
         GoalCombo.ItemsSource = Goals.Select(x => x.Label).ToList();
         GoalCombo.SelectedIndex = g.CellMode == LayerMode.Line ? 3 : 0;
-        MaterialBox.Text = activeLayer?.MaterialName is { } m ? m.Split('–')[0].Trim() : "";
+        // "Plywood (birch) 3 mm – Engrave" → material "Plywood (birch)", thickness 3.
+        if (activeLayer?.MaterialName is { } m)
+        {
+            var name = m.Split('–')[0].Trim();
+            var thick = System.Text.RegularExpressions.Regex.Match(name, @"\s+(\d+(?:[.,]\d+)?)\s*mm$");
+            if (thick.Success)
+            {
+                ThicknessBox.Text = thick.Groups[1].Value;
+                name = name[..thick.Index].Trim();
+            }
+            MaterialBox.Text = name;
+        }
         ApplyButton.ToolTip = activeLayer != null ? $"Put these settings on layer '{activeLayer.Name}'" : "Select a layer first";
         ApplyButton.Tag = activeLayer != null;
     }

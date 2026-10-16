@@ -148,7 +148,7 @@ public static class SmokeTest
                 var design = DesignGenerator.Parse(DemoDesignReply, request, WpfTextOutliner.Instance);
                 var dlg = new DesignWindow(main!, main!.SmokeAi);
                 dlg.Show();
-                dlg.SmokeShow("A round coaster with mountains under a crescent moon, \"WILD\" across the top and a cut outline", design, DesignStyle.EngraveAndCut);
+                dlg.SmokeShow("A round coaster with mountains under a crescent moon, \"WILD\" across the top and a cut outline", design, DesignStyle.EngraveAndCut, 90);
                 Pump(300);
                 Save(dlg, Path.Combine(outDir, "ai-design.png"));
                 dlg.Close();
@@ -175,7 +175,8 @@ public static class SmokeTest
                 var mask = BackgroundRemoval.PlainBackgroundMask(img.Gray, img.PixelWidth, img.PixelHeight);
                 BackgroundRemoval.ApplyMask(img.Gray, mask);
                 AutoTune.Tune(img.Gray, "Plywood (birch) 3 mm – Photo");
-                var dlg = new LineArtWindow(main, img.Gray, img.PixelWidth, img.PixelHeight);
+                var (scene, sw, sh) = FakeScenePhoto();
+                var dlg = new LineArtWindow(main, scene, sw, sh);
                 dlg.Show();
                 dlg.SmokeSet(0.6, 0.55, 0.2);
                 Pump(300);
@@ -247,12 +248,49 @@ public static class SmokeTest
         <svg xmlns="http://www.w3.org/2000/svg" width="90mm" height="90mm" viewBox="0 0 90 90">
           <g id="cut"><circle cx="45" cy="45" r="43"/></g>
           <path d="M14 62 L30 38 L38 48 L50 28 L62 46 L68 40 L78 62 Z M44 36 L50 28 L55 36 L52 34 L50 37 L47 34 Z"/>
-          <path d="M60 18 A9 9 0 1 0 66 32 A7 7 0 1 1 60 18 Z"/>
+          <path d="M64 30 A8 8 0 1 0 72 42 A6.5 6.5 0 1 1 64 30 Z"/>
           <path d="M18 70 L72 70 M24 75 L66 75"/>
-          <text x="45" y="26" font-family="Arial Black" font-size="9" text-anchor="middle">WILD</text>
+          <text x="45" y="22" font-family="Arial Black" font-size="10" text-anchor="middle">WILD</text>
         </svg>
         ```
         """;
+
+    /// <summary>A soft, photo-like greyscale scene (cottage, tree, sun, hills) for the line art screenshot.</summary>
+    private static (byte[] Gray, int W, int H) FakeScenePhoto()
+    {
+        int w = 720, h = 540;
+        var visual = new DrawingVisual();
+        Brush G(byte v) => new SolidColorBrush(Color.FromRgb(v, v, v));
+        using (var dc = visual.RenderOpen())
+        {
+            dc.DrawRectangle(new LinearGradientBrush(Color.FromRgb(225, 225, 225), Color.FromRgb(170, 170, 170), 90), null, new Rect(0, 0, w, h));
+            dc.DrawEllipse(G(245), null, new Point(590, 110), 55, 55);
+            var hills = Geometry.Parse("M0,380 C150,300 260,330 360,360 C480,395 600,300 720,330 L720,540 L0,540 Z");
+            dc.DrawGeometry(G(120), null, hills);
+            dc.DrawRectangle(G(200), new Pen(G(60), 3), new Rect(170, 250, 220, 160));                       // walls
+            dc.DrawGeometry(G(80), new Pen(G(40), 3), Geometry.Parse("M150,255 L280,160 L410,255 Z"));      // roof
+            dc.DrawRectangle(G(70), null, new Rect(255, 330, 50, 80));                                       // door
+            foreach (var x in new[] { 195.0, 325.0 }) dc.DrawRectangle(G(110), new Pen(G(50), 2), new Rect(x, 280, 40, 36));
+            dc.DrawRectangle(G(70), null, new Rect(330, 175, 22, 45));                                       // chimney
+            dc.DrawRectangle(G(60), null, new Rect(520, 300, 18, 110));                                      // trunk
+            foreach (var (cx, cy, r) in new[] { (529.0, 260.0, 60.0), (495.0, 290.0, 40.0), (565.0, 290.0, 42.0) })
+                dc.DrawEllipse(G(95), null, new Point(cx, cy), r, r * 0.9);
+            var rnd = new Random(5);
+            for (int i = 0; i < 60; i++) // grass
+            {
+                double x = rnd.Next(w), y = 420 + rnd.Next(110);
+                dc.DrawLine(new Pen(G(70), 1.5), new Point(x, y), new Point(x + rnd.Next(-4, 5), y - 8 - rnd.Next(8)));
+            }
+        }
+        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(visual);
+        var gray = new FormatConvertedBitmap(rtb, PixelFormats.Gray8, null, 0);
+        var px = new byte[w * h];
+        gray.CopyPixels(px, w, 0);
+        // Soften like a real photo so the filter has gradients to work with.
+        var soft = Filters.ToBytes(Filters.GaussianBlur(Filters.ToFloat(px), w, h, 1.6));
+        return (soft, w, h);
+    }
 
     /// <summary>A pretend photo of a burned 5 × 5 test grid on wood, for the grid reader screenshot.</summary>
     private static (byte[] Jpeg, BitmapSource Bitmap) FakeGridPhoto(MaterialTestOptions g)

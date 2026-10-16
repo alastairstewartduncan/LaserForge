@@ -173,9 +173,11 @@ public partial class DesignWindow : Window
         double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
 
     // ---- smoke test hooks
-    internal void SmokeShow(string prompt, DesignResult design, DesignStyle style)
+    internal void SmokeShow(string prompt, DesignResult design, DesignStyle style, double widthMm)
     {
         PromptBox.Text = prompt;
+        WidthBox.Text = widthMm.ToString(CultureInfo.CurrentCulture);
+        (style switch { DesignStyle.LineArt => StyleLine, DesignStyle.EngraveAndCut => StyleBoth, _ => StyleEngrave }).IsChecked = true;
         _resultStyle = style;
         Preview.RenderStyle = style;
         Preview.Design = design;
