@@ -6,7 +6,21 @@ A Windows design-and-burn app for **GRBL diode lasers** (xTool, Atomstack, Sculp
 
 <p align="center"><img src="docs/screenshots/design.png" alt="A·S·D Lasercraft design view" width="900"></p>
 
-> **Status: v0.3.** The core engine (G-code generation, dithering, GRBL streaming, SVG import, kerf, tracing) is covered by 77 tests including golden G-code files, and CI opens every window of the app on Windows before each build is published. Always test new settings on scrap first.
+> **Status: v0.4.** Adds optional AI features powered by Claude. The core engine (G-code generation, dithering, GRBL streaming, SVG import, kerf, tracing, AI parsing and tools) is covered by 105 tests including golden G-code files, and CI opens every window of the app on Windows before each build is published. Always test new settings on scrap first.
+
+## AI features (optional)
+
+| Feature | What it does | Where it runs |
+|---|---|---|
+| **Describe a design** (Ctrl+G) | Type what you want – *"a round coaster with mountains and a moon, cut out"* – and Claude draws it as editable vectors. Lettering is outlined with your own installed fonts. Preview it, ask for changes ("make the text bigger"), then add it. Engrave, line-art and engrave-and-cut styles. | Claude (only the description is sent) |
+| **Read a test grid photo** | Burn a material test grid, photograph it, and Claude picks the best cell for your goal (dark engrave, light engrave, photo, or cut-through). Save it as a material preset or put it straight on a layer. The speeds and powers come from the grid itself, so they're exact. | Claude (the photo, when you click Read) |
+| **Assistant** (Ctrl+K) | A chat tab that knows your project, machine, presets and console. Ask about settings and materials, get alarms explained, or have it add text and shapes, set layers, apply presets, make arrays and generate artwork. Every change is one undo step; switch "Can edit" off for advice only. **It can never frame, start or stop the laser.** | Claude (messages plus a text summary of the project) |
+| **Remove background** | Whitens everything behind the subject so it isn't burned. AI model for busy backgrounds (a one-off 4.6 MB download of U²-Net, checksum-verified), or an instant plain-background mode. | Your PC, offline |
+| **Photo to line art** | Turns a photo into clean dark lines on white, with detail, strength and shading sliders and a live preview. Line art engraves far crisper than a dithered photo. | Your PC, offline |
+| **Auto-tune** | One click sets brightness, contrast, gamma, invert and dithering for the layer's material – lightening for wood, inverting for slate and anodised aluminium. | Your PC, offline |
+| **GRBL explanations** | Every `ALARM:` and `error:` in the console gets a plain-English meaning and fix underneath. | Your PC, offline |
+
+To use the Claude features, add your own API key from [console.anthropic.com](https://console.anthropic.com/settings/keys) in **AI → AI settings**. It's stored in Windows Credential Manager (never in a file), and usage is billed to your Anthropic account. You can hide all AI features in the same window.
 
 ## Features
 
@@ -37,6 +51,8 @@ A Windows design-and-burn app for **GRBL diode lasers** (xTool, Atomstack, Sculp
 |---|---|
 | <img src="docs/screenshots/splash.png" width="420"><br>Start-up: the head engraves the logo | <img src="docs/screenshots/preview.png" width="420"><br>Simulated preview with scrub bar |
 | <img src="docs/screenshots/laser-running.png" width="420"><br>Running a job: glowing head and burn trail | <img src="docs/screenshots/preflight.png" width="420"><br>Pre-flight checks before burning |
+| <img src="docs/screenshots/ai-design.png" width="420"><br>Describe a design: Claude draws it as vectors | <img src="docs/screenshots/assistant.png" width="420"><br>The assistant adding text to the project |
+| <img src="docs/screenshots/ai-test-grid.png" width="420"><br>Reading a test grid photo | <img src="docs/screenshots/ai-line-art.png" width="420"><br>Photo to line art, on your PC |
 
 ## Project layout
 
@@ -45,20 +61,21 @@ AsdLasercraft.sln
 ├─ src/AsdLasercraft.Core      Pure .NET 8 engine, no UI or package dependencies
 │   ├─ Geometry             Vec2, Bounds, Polyline, Transform2D, curve/arc flattening
 │   ├─ Model                LaserProject, Layer, VectorShape, ImageShape, ShapeFactory, MachineProfile
-│   ├─ Imaging              Adjust → resample to line interval → dither
+│   ├─ Ai                   Claude client, design generator, test-grid reader, assistant + tools
+│   ├─ Imaging              Adjust → resample → dither; background removal, line art, auto-tune
 │   ├─ Gcode                GcodeGenerator (line / fill / raster / frame), scan offset, angled fill, kerf/tabs, preflight
-│   ├─ Grbl                 Character-counting streamer, status parser, error codes, GrblSimulator
+│   ├─ Grbl                 Character-counting streamer, status parser, error/alarm explanations, GrblSimulator
 │   ├─ Tools                Material library, arrays, image tracing
-│   ├─ Import               SVG importer
+│   ├─ Import               SVG importer (including text runs for real-font outlining)
 │   ├─ Generators           Material test grid, seven-segment label font
 │   └─ Serialization        .asdl JSON project files, snapshot undo/redo
 ├─ src/AsdLasercraft.App       WPF front end (Windows only)
 │   ├─ Themes                     Dark theme and line icons
 │   ├─ Controls                   DesignCanvas (work area, rulers, preview), Glyph icon control
-│   ├─ Views / Dialogs            Splash screen, Ready-to-burn, material library, About
-│   ├─ Services                   Laser connection, settings, update check, smoke test
-│   └─ MainWindow.*.cs            Main window, split by area (file, edit, layers, laser, preview, tools)
-├─ tests/AsdLasercraft.Core.Tests    Dependency-free test runner (77 tests) + golden G-code files
+│   ├─ Views / Dialogs            Splash, Ready-to-burn, material library, About, AI settings, design, test grid, line art
+│   ├─ Services                   Laser connection, settings, update check, AI services, key storage, background model, smoke test
+│   └─ MainWindow.*.cs            Main window, split by area (file, edit, layers, laser, preview, tools, AI)
+├─ tests/AsdLasercraft.Core.Tests    Dependency-free test runner (105 tests) + golden G-code files
 └─ installer/                    Inno Setup script
 ```
 
@@ -94,13 +111,13 @@ Coordinates: the canvas uses a top-left origin, like the screen. Most diode lase
 
 ## Typical workflow
 
-1. **Tools → Material test grid** on a scrap of your material. Pick the cell that looks best and save it in the **Material library**.
+1. **Tools → Material test grid** on a scrap of your material. Pick the cell that looks best (or photograph it and use **AI → Read a test grid photo**) and save it in the **Material library**.
 2. Draw or import artwork (or drag it onto the canvas). Put engraving on a `Fill` or `Image` layer and cut lines on a `Line` layer at the **bottom** of the list, so cuts happen last.
 3. Apply a material preset or set speed, power and passes per layer. Add kerf and tabs to cut layers.
 4. Choose where the job starts on the Laser tab (absolute, user origin or current position).
 5. **Preview** (Ctrl+P) to watch the job, then Connect → Home → **Frame** → **Start** and read the pre-flight checks.
 
-Shortcuts: `Ctrl+P` simulated preview (Space play/pause, Esc close), `Ctrl+M` material library, `+`/`−` zoom, `V` select, `R` rectangle, `E` ellipse, `G` polygon, `L` line, `P` pen (Enter or double-click finishes, click the first point to close), `T` text, `F` zoom to fit, arrows nudge 1 mm (Shift 10 mm, Ctrl 0.1 mm), `Ctrl+D` duplicate, `Ctrl+Z`/`Ctrl+Y` undo/redo, `Esc` cancel. Hold Shift to draw squares and circles, Alt to disable snapping, and Space or middle-drag to pan.
+Shortcuts: `Ctrl+G` describe a design, `Ctrl+K` assistant, `Ctrl+P` simulated preview (Space play/pause, Esc close), `Ctrl+M` material library, `+`/`−` zoom, `V` select, `R` rectangle, `E` ellipse, `G` polygon, `L` line, `P` pen (Enter or double-click finishes, click the first point to close), `T` text, `F` zoom to fit, arrows nudge 1 mm (Shift 10 mm, Ctrl 0.1 mm), `Ctrl+D` duplicate, `Ctrl+Z`/`Ctrl+Y` undo/redo, `Esc` cancel. Hold Shift to draw squares and circles, Alt to disable snapping, and Space or middle-drag to pan.
 
 ## Safety
 
@@ -108,7 +125,7 @@ Lasers start fires and cause permanent eye damage. Always wear safety glasses ra
 
 ## Versioning
 
-The version is set once in `Directory.Build.props` (`VersionPrefix`). CI stamps each build with its run number and commit, so **Help → About** shows something like `0.3.0 (build 12, a1b2c3d)`. Generated G-code files record the version in their header. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+The version is set once in `Directory.Build.props` (`VersionPrefix`). CI stamps each build with its run number and commit, so **Help → About** shows something like `0.4.0 (build 12, a1b2c3d)`. Generated G-code files record the version in their header. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Author
 
@@ -119,7 +136,7 @@ The version is set once in `Directory.Build.props` (`VersionPrefix`). CI stamps 
 ## Roadmap ideas
 
 - Boolean operations (union, difference) and a node editor for vectors
-- Camera overlay for positioning on the material
+- Camera overlay for positioning on the material (and AI auto-placement on it)
 - Rotary attachment support
 - Job resume after an interruption
 - DXF and PDF import

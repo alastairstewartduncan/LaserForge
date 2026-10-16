@@ -2,6 +2,25 @@
 
 All notable changes to A·S·D Lasercraft (formerly LaserForge). Versions follow [semantic versioning](https://semver.org).
 
+## [0.4.0] – 2026-10-16
+
+### Added – AI (optional, powered by Claude)
+- **Describe a design** (AI menu, toolbar sparkle, Ctrl+G): type a description and Claude draws it as an SVG using laser-friendly rules. It's imported as editable vectors, with lettering outlined in your installed fonts (curved text supported), scaled to your size and placed on sensible layers. Live burn-style preview, "change it" refinements, and Engrave / Line art / Engrave + cut styles with ready-made ideas.
+- **Read a test grid photo**: photograph a burned material test grid and Claude picks the best cell for your goal (darkest clean engrave, light engrave, photo, or cut-through), with confidence, reasoning, a runner-up and tips. Save the result as a material preset or apply it to the current layer. The app remembers the last grid you generated so the speeds and powers are exact.
+- **Assistant tab** (Ctrl+K): a chat that sees your project, machine, material presets and recent console lines. It can add text and shapes, set layer settings, apply presets, add layers, move, resize, array, re-layer, select, delete and generate artwork – each change one undo step. A "Can edit" toggle switches it to advice only. It has no way to frame, start, stop or stream jobs.
+- **AI settings**: your own Claude API key (stored in Windows Credential Manager), model choice, connection test, and privacy options. AI features can be hidden entirely.
+
+### Added – smart image tools (run on your PC)
+- **Remove background**: the U²-Net (u2netp) model via ONNX Runtime – a one-off 4.6 MB download, SHA-256 verified, then fully offline – or an instant plain-background mode.
+- **Photo to line art** with detail, line strength and shading sliders and a live preview; the result burns with threshold dithering.
+- **Auto-tune for material**: one click sets brightness, contrast, gamma, invert and dithering from the image's tonal range and the layer's material.
+- **GRBL explanations**: every `ALARM:` and `error:` in the console is followed by its meaning and a practical fix. The full GRBL 1.1 error and alarm tables are included.
+
+### Engineering
+- New `AsdLasercraft.Core.Ai` namespace: a dependency-free Claude Messages API client (text, images, tool use, friendly errors), a scripted `FakeAiClient`, and the design generator, grid reader and assistant tools, all unit-tested without a network.
+- SVG import can now return `<text>` runs with their font, size, anchor and transforms.
+- 28 new core tests (105 total); the UI smoke test now opens the AI settings, design, test grid and line art windows and runs an assistant conversation against a fake client.
+
 ## [0.3.0] – 2026-10-14
 
 ### Added – burn quality
