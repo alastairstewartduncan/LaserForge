@@ -7,21 +7,26 @@ namespace AsdLasercraft.Core.Import;
 
 /// <summary>
 /// Lightweight SVG importer: path, rect, circle, ellipse, line, polyline, polygon, nested groups and
-/// transforms. Output is flattened polylines in millimetres. Text elements are not imported (convert
-/// text to paths in your design tool first).
+/// transforms. Output is flattened polylines in millimetres. <see cref="Import"/> skips text elements (convert
+/// text to paths in your design tool first); <see cref="ImportWithText"/> also returns them so the caller can
+/// outline them with a real font.
 /// </summary>
 public static class SvgImporter
 {
     private const double PxToMm = 25.4 / 96.0;
 
-    public static List<Polyline> Import(string svgText)
+    public static List<Polyline> Import(string svgText) => ImportWithText(svgText).Paths;
+
+    /// <summary>Imports drawable paths plus any &lt;text&gt; elements (with their position, size and transform).</summary>
+    public static (List<Polyline> Paths, List<SvgText> Texts) ImportWithText(string svgText)
     {
         var doc = XDocument.Parse(svgText);
         var root = doc.Root ?? throw new FormatException("Empty SVG");
         var rootTransform = RootTransform(root);
         var result = new List<Polyline>();
-        Walk(root, rootTransform, result);
-        return result.Where(p => p.Points.Count >= 2).ToList();
+        var texts = new List<SvgText>();
+        Walk(root, rootTransform, result, texts);
+        return (result.Where(p => p.Points.Count >= 2).ToList(), texts);
     }
 
     /// <summary>Maps the viewBox to physical size (width/height with units), defaulting to 96 DPI px.</summary>
@@ -45,13 +50,18 @@ public static class SvgImporter
         return Transform2D.Scale(PxToMm, PxToMm);
     }
 
-    private static void Walk(XElement el, Transform2D parent, List<Polyline> output)
+    private static void Walk(XElement el, Transform2D parent, List<Polyline> output, List<SvgText> texts)
     {
         string name = el.Name.LocalName;
         if (name is "defs" or "clipPath" or "mask" or "symbol" or "style" or "metadata" or "title" or "desc") return;
         if (string.Equals(Attr(el, "display"), "none", StringComparison.OrdinalIgnoreCase)) return;
 
         var t = ParseTransform(el.Attribute("transform")?.Value).Then(parent);
+        if (name == "text")
+        {
+            if (ReadText(el, t) is { } text) texts.Add(text);
+            return; // tspans are part of the text, not separate drawables
+        }
         List<Polyline>? local = name switch
         {
             "path" => ParsePath(el.Attribute("d")?.Value ?? ""),
@@ -65,8 +75,43 @@ public static class SvgImporter
         };
         if (local != null) output.AddRange(local.Select(p => p.Transformed(t)));
 
-        foreach (var child in el.Elements()) Walk(child, t, output);
+        foreach (var child in el.Elements()) Walk(child, t, output, texts);
     }
+
+    private static SvgText? ReadText(XElement el, Transform2D t)
+    {
+        var content = Regex.Replace(el.Value, @"\s+", " ").Trim();
+        if (content.Length == 0) return null;
+        // x/y may be lists (one per character); the first value positions the run.
+        double x = FirstNumber(el.Attribute("x")?.Value), y = FirstNumber(el.Attribute("y")?.Value);
+        var tspan = el.Elements().FirstOrDefault(e => e.Name.LocalName == "tspan");
+        if (el.Attribute("x") == null && tspan?.Attribute("x") != null) x = FirstNumber(tspan.Attribute("x")!.Value);
+        if (el.Attribute("y") == null && tspan?.Attribute("y") != null) y = FirstNumber(tspan.Attribute("y")!.Value);
+
+        double size = Length(Inherited(el, "font-size")) is { } mm ? mm / PxToMm : 16;
+        var family = (Inherited(el, "font-family") ?? "Arial").Split(',')[0].Trim().Trim('\'', '"');
+        var weight = Inherited(el, "font-weight") ?? "normal";
+        bool bold = weight.Equals("bold", StringComparison.OrdinalIgnoreCase) || weight.Equals("bolder", StringComparison.OrdinalIgnoreCase) ||
+                    (int.TryParse(weight, out int w) && w >= 600);
+        bool italic = (Inherited(el, "font-style") ?? "").Contains("italic", StringComparison.OrdinalIgnoreCase);
+        var anchor = (Inherited(el, "text-anchor") ?? "start").ToLowerInvariant() switch
+        {
+            "middle" => TextAnchor.Middle,
+            "end" => TextAnchor.End,
+            _ => TextAnchor.Start,
+        };
+        return new SvgText(content, family, size, bold, italic, anchor, Transform2D.Translate(x, y).Then(t));
+    }
+
+    /// <summary>A presentation attribute from the element or its nearest ancestor that sets it.</summary>
+    private static string? Inherited(XElement el, string name)
+    {
+        for (var e = el; e != null; e = e.Parent)
+            if (Attr(e, name) is { Length: > 0 } v && v != "inherit") return v;
+        return null;
+    }
+
+    private static double FirstNumber(string? s) => s != null && Numbers(s) is { Count: > 0 } n ? n[0] : 0;
 
     private static string? Attr(XElement el, string name)
     {

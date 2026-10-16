@@ -1,12 +1,13 @@
 <Window x:Class="AsdLasercraft.App.Dialogs.AboutWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="About A·S·D Lasercraft" Width="460" SizeToContent="Height"
+        Style="{StaticResource AppWindow}"
+        Title="About A·S·D Lasercraft" Width="480" SizeToContent="Height"
         ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Icon="/Assets/AsdLasercraft.ico">
     <StackPanel>
         <!-- Header -->
-        <Border Padding="24,22">
+        <Border Padding="24,22" BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,0,0,1">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                     <GradientStop Color="#232733" Offset="0" />
@@ -41,35 +42,35 @@
                 </Style>
             </Grid.Resources>
 
-            <TextBlock Text="Author" Foreground="Gray" Margin="0,3,16,3" />
+            <TextBlock Text="Author" Foreground="{StaticResource Brush.TextDim}" Margin="0,3,16,3" />
             <TextBlock x:Name="AuthorText" Grid.Column="1" FontWeight="SemiBold" />
 
-            <TextBlock Grid.Row="1" Text="Email" Foreground="Gray" Margin="0,3,16,3" />
+            <TextBlock Grid.Row="1" Text="Email" Foreground="{StaticResource Brush.TextDim}" Margin="0,3,16,3" />
             <TextBlock Grid.Row="1" Grid.Column="1">
-                <Hyperlink x:Name="EmailLink" RequestNavigate="Link_RequestNavigate"><Run x:Name="EmailText" /></Hyperlink>
+                <Hyperlink x:Name="EmailLink" Foreground="{StaticResource Brush.Accent}" RequestNavigate="Link_RequestNavigate"><Run x:Name="EmailText" /></Hyperlink>
             </TextBlock>
 
-            <TextBlock Grid.Row="2" Text="Source" Foreground="Gray" Margin="0,3,16,3" />
+            <TextBlock Grid.Row="2" Text="Source" Foreground="{StaticResource Brush.TextDim}" Margin="0,3,16,3" />
             <TextBlock Grid.Row="2" Grid.Column="1">
-                <Hyperlink x:Name="RepoLink" RequestNavigate="Link_RequestNavigate"><Run x:Name="RepoText" /></Hyperlink>
+                <Hyperlink x:Name="RepoLink" Foreground="{StaticResource Brush.Accent}" RequestNavigate="Link_RequestNavigate"><Run x:Name="RepoText" /></Hyperlink>
             </TextBlock>
 
-            <TextBlock Grid.Row="3" Text="Version" Foreground="Gray" Margin="0,3,16,3" />
+            <TextBlock Grid.Row="3" Text="Version" Foreground="{StaticResource Brush.TextDim}" Margin="0,3,16,3" />
             <TextBlock x:Name="FullVersionText" Grid.Row="3" Grid.Column="1" />
 
-            <TextBlock Grid.Row="4" Text="Runtime" Foreground="Gray" Margin="0,3,16,3" />
+            <TextBlock Grid.Row="4" Text="Runtime" Foreground="{StaticResource Brush.TextDim}" Margin="0,3,16,3" />
             <TextBlock x:Name="RuntimeText" Grid.Row="4" Grid.Column="1" />
 
-            <TextBlock x:Name="DescriptionText" Grid.Row="5" Grid.ColumnSpan="2" Margin="0,12,0,0" Foreground="#444" />
+            <TextBlock x:Name="DescriptionText" Grid.Row="5" Grid.ColumnSpan="2" Margin="0,12,0,0" Foreground="{StaticResource Brush.TextMuted}" />
         </Grid>
 
-        <TextBlock x:Name="CopyrightText" Margin="24,8,24,0" Foreground="Gray" FontSize="11" TextWrapping="Wrap" />
-        <TextBlock Margin="24,4,24,0" Foreground="Gray" FontSize="11" TextWrapping="Wrap"
+        <TextBlock x:Name="CopyrightText" Margin="24,8,24,0" Foreground="{StaticResource Brush.TextDim}" FontSize="11" TextWrapping="Wrap" />
+        <TextBlock Margin="24,4,24,0" Foreground="{StaticResource Brush.TextDim}" FontSize="11" TextWrapping="Wrap"
                    Text="Lasers cause fires and permanent eye damage. Wear glasses rated for your laser's wavelength and never leave a job unattended." />
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="24,16,24,20">
             <Button Content="Copy details" Click="Copy_Click" MinWidth="100" />
-            <Button Content="Close" IsDefault="True" IsCancel="True" Click="Close_Click" MinWidth="90" />
+            <Button Content="Close" IsDefault="True" IsCancel="True" Click="Close_Click" MinWidth="90" Style="{StaticResource PrimaryButton}" />
         </StackPanel>
     </StackPanel>
 </Window>
