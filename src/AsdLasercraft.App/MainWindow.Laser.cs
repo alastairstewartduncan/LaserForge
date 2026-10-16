@@ -322,6 +322,9 @@ public partial class MainWindow
     private void Log(string text)
     {
         ConsoleList.Items.Add($"{DateTime.Now:HH:mm:ss}  {text}");
+        // Explain GRBL alarms and errors in plain English, right where they appear (works offline).
+        if (AsdLasercraft.Core.Grbl.GrblCodes.Explain(text) is { } info)
+            ConsoleList.Items.Add($"          ↳ {info.Meaning} {info.Fix}");
         while (ConsoleList.Items.Count > 1000) ConsoleList.Items.RemoveAt(0);
         ConsoleList.ScrollIntoView(ConsoleList.Items[^1]);
     }

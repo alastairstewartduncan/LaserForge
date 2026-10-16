@@ -41,6 +41,8 @@ public partial class MainWindow
             CellMode = r.GetChoice<LayerMode>("Cell mode"),
             Labels = r.GetCheck("Engrave labels"),
         };
+        _settings.LastTestGrid = o; // so AI → Read a test grid photo knows this grid's layout
+        _settings.Save();
         _undo.Clear();
         _dirty = true;
         SetProject(MaterialTestGenerator.Create(_project.Machine, o), null, fit: true);
@@ -233,6 +235,8 @@ public partial class MainWindow
                 Key.E => () => ExportGcode_Click(this, e),
                 Key.M => () => MaterialLibrary_Click(this, e),
                 Key.P => () => Simulate_Click(this, e),
+                Key.G => () => AiDesign_Click(this, e),
+                Key.K => () => FocusAssistant(),
                 _ => null,
             };
             if (a != null) { a(); e.Handled = true; return; }

@@ -1,0 +1,127 @@
+<Window x:Class="AsdLasercraft.App.Dialogs.TestGridWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:AsdLasercraft.App.Controls"
+        Style="{StaticResource AppWindow}"
+        Title="Read a test grid" Width="980" Height="660" MinWidth="860" MinHeight="580"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True" Drop="Window_Drop">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Background="{StaticResource Brush.HeaderGradient}" Padding="22,16" BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="12" Background="{StaticResource Brush.AccentSoft}" Margin="0,0,14,0">
+                    <c:Glyph Data="{StaticResource I.Camera}" Size="24" Foreground="{StaticResource Brush.Accent}" HorizontalAlignment="Center" />
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Test grid reader" FontSize="18" FontWeight="SemiBold" FontFamily="{StaticResource Font.Display}" />
+                    <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,0"
+                               Text="Burn Tools → Material test grid, photograph it, and Claude picks the best speed and power for your machine." />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="20,16,20,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="380" />
+            </Grid.ColumnDefinitions>
+
+            <!-- photo -->
+            <Border CornerRadius="12" Background="{StaticResource Brush.Bg0}" BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" ClipToBounds="True">
+                <Grid>
+                    <Image x:Name="PhotoImage" Stretch="Uniform" Margin="8" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <StackPanel x:Name="PhotoPlaceholder" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="320">
+                        <c:Glyph Data="{StaticResource I.Camera}" Size="40" Foreground="{StaticResource Brush.TextDim}" HorizontalAlignment="Center" />
+                        <TextBlock Margin="0,12,0,12" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource Brush.TextMuted}"
+                                   Text="Drop a photo here or choose one. Shoot straight down, in even light, with the whole grid and its labels in frame." />
+                        <Button HorizontalAlignment="Center" Click="ChoosePhoto_Click">
+                            <c:Glyph Data="{StaticResource I.Open}" Text="Choose photo…" Size="15" />
+                        </Button>
+                    </StackPanel>
+                    <Button x:Name="ChangePhotoButton" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Visibility="Collapsed" Click="ChoosePhoto_Click">
+                        <c:Glyph Data="{StaticResource I.Open}" Text="Change" Size="14" />
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- settings + result -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="THE GRID YOU BURNED" Style="{StaticResource Caption}" Margin="2,0,2,4" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition Width="56" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition /><RowDefinition /><RowDefinition />
+                        </Grid.RowDefinitions>
+                        <Label Content="" />
+                        <TextBlock Grid.Column="1" Text="from" Style="{StaticResource Muted}" FontSize="11" Margin="4,0" />
+                        <TextBlock Grid.Column="2" Text="to" Style="{StaticResource Muted}" FontSize="11" Margin="4,0" />
+                        <TextBlock Grid.Column="3" Text="steps" Style="{StaticResource Muted}" FontSize="11" Margin="4,0" />
+                        <Label Grid.Row="1" Content="Speed" />
+                        <TextBox x:Name="MinSpeedBox" Grid.Row="1" Grid.Column="1" />
+                        <TextBox x:Name="MaxSpeedBox" Grid.Row="1" Grid.Column="2" />
+                        <TextBox x:Name="SpeedStepsBox" Grid.Row="1" Grid.Column="3" />
+                        <Label Grid.Row="2" Content="Power %" />
+                        <TextBox x:Name="MinPowerBox" Grid.Row="2" Grid.Column="1" />
+                        <TextBox x:Name="MaxPowerBox" Grid.Row="2" Grid.Column="2" />
+                        <TextBox x:Name="PowerStepsBox" Grid.Row="2" Grid.Column="3" />
+                    </Grid>
+                    <CheckBox x:Name="LineCellsCheck" Content="Cells were outlines (Line mode)" />
+                    <TextBlock x:Name="GridHint" Style="{StaticResource Muted}" FontSize="11.5" Margin="3,0,3,0" TextWrapping="Wrap" />
+
+                    <TextBlock Text="WHAT ARE YOU LOOKING FOR?" Style="{StaticResource Caption}" Margin="2,12,2,4" />
+                    <ComboBox x:Name="GoalCombo" />
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="60" />
+                        </Grid.ColumnDefinitions>
+                        <Label Content="Material" />
+                        <TextBox x:Name="MaterialBox" Grid.Column="1" ToolTip="e.g. Birch plywood, Slate coaster, Veg-tan leather" />
+                        <Label Content="mm" Grid.Column="2" Margin="6,0,0,0" />
+                        <TextBox x:Name="ThicknessBox" Grid.Column="3" Text="3" ToolTip="Thickness in mm (0 if not relevant)" />
+                    </Grid>
+
+                    <Button x:Name="AnalyseButton" Style="{StaticResource PrimaryButton}" MinHeight="40" Margin="2,14,2,2" IsEnabled="False" Click="Analyse_Click">
+                        <c:Glyph Data="{StaticResource I.Sparkle}" Text="Read the grid" Size="16" />
+                    </Button>
+                    <ProgressBar x:Name="BusyBar" IsIndeterminate="True" Margin="2,8,2,0" Visibility="Collapsed" />
+                    <TextBlock x:Name="ErrorText" Foreground="{StaticResource Brush.Warning}" TextWrapping="Wrap" Margin="3,8,3,0" Visibility="Collapsed" />
+
+                    <!-- result -->
+                    <Border x:Name="ResultPanel" Margin="0,14,0,0" Padding="14,12" CornerRadius="12" Background="{StaticResource Brush.Panel}"
+                            BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="BEST SETTINGS" Style="{StaticResource Caption}" Margin="0" />
+                            <TextBlock x:Name="ResultTitle" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource Brush.Accent}" Margin="0,4,0,0" />
+                            <TextBlock x:Name="ResultConfidence" Style="{StaticResource Muted}" FontSize="12" Margin="0,2,0,8" />
+                            <Grid x:Name="CellGrid" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                            <TextBlock x:Name="ReasonText" TextWrapping="Wrap" FontSize="12.5" />
+                            <TextBlock x:Name="AdviceText" TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource Brush.Info}" Margin="0,6,0,0" />
+                            <TextBlock x:Name="AltText" TextWrapping="Wrap" FontSize="12" Style="{StaticResource Muted}" Margin="0,6,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <DockPanel Grid.Row="2" Margin="20,0,20,18" LastChildFill="False">
+            <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Style="{StaticResource Muted}" FontSize="12" MaxWidth="420" TextWrapping="Wrap"
+                       Text="The photo is sent to Claude only when you click Read the grid." />
+            <Button x:Name="SaveButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" MinWidth="150" IsEnabled="False" Click="Save_Click">
+                <c:Glyph Data="{StaticResource I.Material}" Text="Save as preset" Size="15" />
+            </Button>
+            <Button x:Name="ApplyButton" DockPanel.Dock="Right" MinWidth="150" IsEnabled="False" Click="Apply_Click" Margin="2,2,8,2">
+                <c:Glyph Data="{StaticResource I.Layers}" Text="Use on layer" Size="15" />
+            </Button>
+            <Button DockPanel.Dock="Right" Content="Close" IsCancel="True" MinWidth="90" Margin="2,2,8,2" />
+        </DockPanel>
+    </Grid>
+</Window>

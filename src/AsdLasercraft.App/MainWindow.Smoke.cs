@@ -99,4 +99,6 @@ public partial class MainWindow
     }
 
     internal Layer? SmokeActiveLayer => ActiveLayer;
+
+    internal ImageShape SmokeImage() => _project.Shapes.OfType<ImageShape>().First();
 }

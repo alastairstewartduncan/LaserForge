@@ -77,6 +77,7 @@ public partial class MainWindow : Window
         _toastTimer.Tick += (_, _) => HideToast();
 
         InitLaser();
+        InitAi();
 
         _updatingUi = true;
         SnapMenu.IsChecked = settings.SnapToGrid;

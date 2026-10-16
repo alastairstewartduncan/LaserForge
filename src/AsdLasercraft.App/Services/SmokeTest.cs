@@ -3,8 +3,12 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Text.Json.Nodes;
 using AsdLasercraft.App.Dialogs;
 using AsdLasercraft.App.Views;
+using AsdLasercraft.Core.Ai;
+using AsdLasercraft.Core.Generators;
+using AsdLasercraft.Core.Imaging;
 using AsdLasercraft.Core.Tools;
 
 namespace AsdLasercraft.App.Services;
@@ -99,6 +103,86 @@ public static class SmokeTest
                 form.Measure(new Size(800, 800));
             });
 
+            // ---------------------------------------------------------------- AI (fake client: no key, no network)
+            Step(log, "assistant setup card", () =>
+            {
+                main!.RightTabs.SelectedItem = main.AssistantTab;
+                Pump(250);
+                Save(main, Path.Combine(outDir, "assistant-setup.png"));
+            });
+
+            Step(log, "assistant chat", () =>
+            {
+                var fake = FakeAiClient.Sequence(
+                    new AiResponse
+                    {
+                        StopReason = "tool_use",
+                        Content =
+                        {
+                            new AiText("I'll add that for you."),
+                            new AiToolUse("t1", "add_text", JsonNode.Parse("{\"text\":\"Happy Birthday\",\"size_mm\":14,\"font\":\"Segoe Script\",\"x_mm\":40,\"y_mm\":200}")!.AsObject()),
+                        },
+                    },
+                    AiResponse.FromText("Done – **\"Happy Birthday\"** is on the Engrave layer below the coaster, in Segoe Script at 14 mm.\n\n" +
+                                        "For 3 mm birch ply I'd start with:\n- Engrave: `3000 mm/min` at 35 %\n- Cut: `300 mm/min` at 100 %, 2 passes with air assist\n\n" +
+                                        "Run a test grid first if it's a new sheet."));
+                main!.SmokeUseFakeAi(fake);
+                var chat = main.SmokeChat("Add \"Happy Birthday\" under the coaster in a script font");
+                PumpUntil(chat, 5000);
+                Pump(250);
+                Save(main, Path.Combine(outDir, "assistant.png"));
+            });
+
+            Step(log, "ai settings", () =>
+            {
+                var dlg = new AiSettingsWindow(main!, settings);
+                dlg.Show();
+                Pump(200);
+                Save(dlg, Path.Combine(outDir, "ai-settings.png"));
+                dlg.Close();
+            });
+
+            Step(log, "design window", () =>
+            {
+                var request = new DesignRequest { WidthMm = 90, Style = DesignStyle.EngraveAndCut };
+                var design = DesignGenerator.Parse(DemoDesignReply, request, WpfTextOutliner.Instance);
+                var dlg = new DesignWindow(main!, main!.SmokeAi);
+                dlg.Show();
+                dlg.SmokeShow("A round coaster with mountains under a crescent moon, \"WILD\" across the top and a cut outline", design, DesignStyle.EngraveAndCut);
+                Pump(300);
+                Save(dlg, Path.Combine(outDir, "ai-design.png"));
+                dlg.Close();
+            });
+
+            Step(log, "test grid reader", () =>
+            {
+                var grid = new MaterialTestOptions();
+                var dlg = new TestGridWindow(main!, main!.SmokeAi, settings, MaterialLibrary.CreateDefault(), Path.Combine(Path.GetTempPath(), "asd-smoke-materials.json"), main.SmokeActiveLayer);
+                var (jpeg, bmp) = FakeGridPhoto(grid);
+                dlg.SetPhoto(jpeg, bmp);
+                dlg.ShowReading(TestGridReader.Parse(
+                    "{\"row\":2,\"column\":2,\"confidence\":0.82,\"reasoning\":\"Rich, even brown with crisp edges. The higher-power cells in this row start to char and show a halo.\",\"alternative\":{\"row\":1,\"column\":2},\"advice\":\"Use air assist to keep the edges clean.\"}",
+                    grid), grid, GridGoal.Engrave);
+                dlg.Show();
+                Pump(300);
+                Save(dlg, Path.Combine(outDir, "ai-test-grid.png"));
+                dlg.Close();
+            });
+
+            Step(log, "smart image tools", () =>
+            {
+                var img = main!.SmokeImage();
+                var mask = BackgroundRemoval.PlainBackgroundMask(img.Gray, img.PixelWidth, img.PixelHeight);
+                BackgroundRemoval.ApplyMask(img.Gray, mask);
+                AutoTune.Tune(img.Gray, "Plywood (birch) 3 mm – Photo");
+                var dlg = new LineArtWindow(main, img.Gray, img.PixelWidth, img.PixelHeight);
+                dlg.Show();
+                dlg.SmokeSet(0.6, 0.55, 0.2);
+                Pump(300);
+                Save(dlg, Path.Combine(outDir, "ai-line-art.png"));
+                dlg.Close();
+            });
+
             Step(log, "close", () =>
             {
                 main!.Close();
@@ -143,6 +227,63 @@ public static class SmokeTest
         {
             throw new StepException(name, ex);
         }
+    }
+
+    /// <summary>Pumps the dispatcher until the task finishes (UI-thread async work such as the assistant).</summary>
+    private static void PumpUntil(Task task, int timeoutMs)
+    {
+        var start = DateTime.UtcNow;
+        while (!task.IsCompleted)
+        {
+            if ((DateTime.UtcNow - start).TotalMilliseconds > timeoutMs) throw new TimeoutException("Timed out waiting for async UI work.");
+            Pump(30);
+        }
+        task.GetAwaiter().GetResult(); // surface any exception
+    }
+
+    private const string DemoDesignReply = """
+        A round coaster with a mountain range under a crescent moon and WILD across the top.
+        ```svg
+        <svg xmlns="http://www.w3.org/2000/svg" width="90mm" height="90mm" viewBox="0 0 90 90">
+          <g id="cut"><circle cx="45" cy="45" r="43"/></g>
+          <path d="M14 62 L30 38 L38 48 L50 28 L62 46 L68 40 L78 62 Z M44 36 L50 28 L55 36 L52 34 L50 37 L47 34 Z"/>
+          <path d="M60 18 A9 9 0 1 0 66 32 A7 7 0 1 1 60 18 Z"/>
+          <path d="M18 70 L72 70 M24 75 L66 75"/>
+          <text x="45" y="26" font-family="Arial Black" font-size="9" text-anchor="middle">WILD</text>
+        </svg>
+        ```
+        """;
+
+    /// <summary>A pretend photo of a burned 5 × 5 test grid on wood, for the grid reader screenshot.</summary>
+    private static (byte[] Jpeg, BitmapSource Bitmap) FakeGridPhoto(MaterialTestOptions g)
+    {
+        int w = 640, h = 480;
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0xD9, 0xBF, 0x93)), null, new Rect(0, 0, w, h));
+            var rnd = new Random(3);
+            for (int i = 0; i < 40; i++) // wood grain
+                dc.DrawLine(new Pen(new SolidColorBrush(Color.FromArgb(40, 0x8A, 0x63, 0x3A)), 1 + rnd.NextDouble() * 2),
+                            new Point(0, rnd.Next(h)), new Point(w, rnd.Next(h)));
+            double cell = 62, gap = 18, left = 150, top = 70;
+            for (int r = 0; r < g.SpeedSteps; r++)
+                for (int c = 0; c < g.PowerSteps; c++)
+                {
+                    double heat = (c + 1.0) / g.PowerSteps * (1 - 0.55 * r / (g.SpeedSteps - 1));
+                    byte v = (byte)(200 - 180 * heat);
+                    dc.DrawRectangle(new SolidColorBrush(Color.FromRgb((byte)(v + 20), (byte)(v * 0.75), (byte)(v * 0.45))), null,
+                                     new Rect(left + c * (cell + gap), top + r * (cell + gap), cell, cell));
+                }
+        }
+        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(visual);
+        rtb.Freeze();
+        var enc = new JpegBitmapEncoder { QualityLevel = 85 };
+        enc.Frames.Add(BitmapFrame.Create(rtb));
+        using var ms = new MemoryStream();
+        enc.Save(ms);
+        return (ms.ToArray(), rtb);
     }
 
     /// <summary>Runs the dispatcher (layout, rendering, animations) for the given time.</summary>
