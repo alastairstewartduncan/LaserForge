@@ -359,23 +359,27 @@ public sealed class LibraryWindow : Window
     {
         if (_loading || _item == null) return;
         var title = _title.Text.Trim();
+        var bodyText = _body.Text.Replace("\r\n", "\n"); // text boxes use Windows line endings; the library uses \n
         if (_item is Skill s)
         {
-            if (s.Title == title && s.Description == _description.Text.Trim() && s.Body == _body.Text) return;
-            s.Title = title; s.Description = _description.Text.Trim(); s.Body = _body.Text;
+            if (s.DisplayName == title && s.Description == _description.Text.Trim() && s.Body == bodyText) return;
+            s.Title = title; s.Description = _description.Text.Trim(); s.Body = bodyText;
         }
         else if (_item is Agent a)
         {
+            var before = a.ToMarkdown();
             a.Title = title;
             a.Description = _description.Text.Trim();
-            a.Instructions = _body.Text;
+            a.Instructions = bodyText;
             a.Role = _role.SelectedIndex switch { 1 => AgentRole.Designer, 2 => AgentRole.Critic, _ => AgentRole.General };
             a.Provider = (_provider.SelectedItem as ProviderChoice)?.Id ?? "";
             a.Model = _model.Text.Trim();
             a.Tools = a.Role != AgentRole.General ? new List<string>()
                 : _allTools.IsChecked == true ? new List<string> { Agent.AllTools }
                 : _tools.Children.OfType<CheckBox>().Where(c => c.IsChecked == true).Select(c => (string)c.Tag).ToList();
-            a.Skills = _skills.Children.OfType<CheckBox>().Where(c => c.IsChecked == true).Select(c => (string)c.Tag).ToList();
+            var attached = _skills.Children.OfType<CheckBox>().Where(c => c.IsChecked == true).Select(c => (string)c.Tag).ToList();
+            if (!attached.SequenceEqual(a.Skills)) a.Skills = attached;
+            if (a.ToMarkdown() == before) return; // nothing really changed (e.g. just looked at it)
         }
         _dirty = true;
     }

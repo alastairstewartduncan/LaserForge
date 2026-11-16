@@ -322,6 +322,16 @@ internal static class LibraryTests
         }
     }
 
+    [Test] static void WindowsLineEndingsDontMakeBuiltInsLookEdited()
+    {
+        Assert.True(BuiltIns.Skills().All(s => !s.Body.Contains('\r')) && BuiltIns.Agents().All(a => !a.Instructions.Contains('\r')), "built-in text uses \\n");
+        var s = BuiltIns.Skills()[0];
+        var crlf = s.Clone();
+        crlf.Body = s.Body.Replace("\n", "\r\n");
+        Assert.Equal(s.ToMarkdown(), crlf.ToMarkdown(), "markdown is the same whatever the line endings");
+        Assert.Equal(s.Body, Skill.FromFrontmatter(Frontmatter.Parse(crlf.ToMarkdown().Replace("\n", "\r\n"))).Body);
+    }
+
     [Test] static void ImportedAgentsArriveWithToolsOffAndNoModel()
     {
         var r = LibraryPorter.ImportText("code-reviewer.md", """

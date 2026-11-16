@@ -7,7 +7,24 @@ public static class BuiltIns
     public const string CriticName = "burn-critic";
     public const string HelperName = "workshop-helper";
 
-    public static List<Skill> Skills() => new()
+    /// <summary>Source files may be checked out with Windows line endings; text in the library always uses \n.</summary>
+    private static string Lf(string s) => s.Replace("\r\n", "\n");
+
+    public static List<Skill> Skills()
+    {
+        var list = RawSkills();
+        foreach (var s in list) s.Body = Lf(s.Body);
+        return list;
+    }
+
+    public static List<Agent> Agents()
+    {
+        var list = RawAgents();
+        foreach (var a in list) a.Instructions = Lf(a.Instructions);
+        return list;
+    }
+
+    private static List<Skill> RawSkills() => new()
     {
         new Skill
         {
@@ -69,7 +86,7 @@ public static class BuiltIns
         },
     };
 
-    public static List<Agent> Agents() => new()
+    private static List<Agent> RawAgents() => new()
     {
         new Agent
         {

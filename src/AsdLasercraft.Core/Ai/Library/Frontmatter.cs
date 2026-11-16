@@ -155,7 +155,7 @@ public sealed class Frontmatter
             }
             sb.Append("---\n\n");
         }
-        sb.Append(Body.Trim()).Append('\n');
+        sb.Append(Body.Replace("\r\n", "\n").Trim()).Append('\n');
         return sb.ToString();
     }
 

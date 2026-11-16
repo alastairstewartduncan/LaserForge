@@ -126,6 +126,7 @@ public sealed class LibraryAssistant
 
     public static LibraryProposal Parse(string reply, ImportAs kind, AiLibrary? library, string? keepName = null)
     {
+        reply = (reply ?? "").Replace("\r\n", "\n");
         // Take the fenced block that holds a header; the file body may itself contain small fences.
         string? file = null;
         string after = "";
