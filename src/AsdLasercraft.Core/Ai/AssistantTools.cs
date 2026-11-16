@@ -29,6 +29,8 @@ public interface IAssistantHost
     void EndEdit(IEnumerable<Guid>? select);
     /// <summary>Asks the design generator for vectors; null when AI design isn't available.</summary>
     Task<DesignResult>? GenerateDesign(DesignRequest request, CancellationToken ct);
+    /// <summary>Asks the designer to change existing artwork (given as SVG in mm); null when AI design isn't available.</summary>
+    Task<DesignResult>? ReviseDesign(string svg, string change, DesignRequest request, CancellationToken ct) => null;
 }
 
 /// <summary>A change the assistant made, shown as a chip under its reply.</summary>
@@ -135,15 +137,20 @@ public sealed class AssistantTools
                        ("style", StringProp("engrave = solid filled, line_art = outlines for scoring/cutting, engrave_and_cut = engraving with a cut outline.", "engrave", "line_art", "engrave_and_cut"), false),
                        ("x_mm", NumberProp("Left, mm (default: centred on the bed)."), false),
                        ("y_mm", NumberProp("Top, mm."), false))),
+            new AiTool("refine_design", "Redraws existing vector shapes with a change applied (e.g. \"make the border thicker\", \"simplify the leaves\", \"add a hanging hole\"). The shapes are replaced in the same place at the same width. Use this to modify artwork rather than deleting and regenerating it. Lettering already in the project is outlines, so say the exact wording if text must change.",
+                Schema(("target", target(), true),
+                       ("change", StringProp("What to change, in plain words."), true))),
         });
         return tools;
     }
 
     /// <summary>Runs one tool call. Never throws: failures come back as an error result the model can read.</summary>
-    public async Task<(AiToolResult Result, AssistantAction? Action)> ExecuteAsync(AiToolUse call, bool canEdit, CancellationToken ct)
+    public async Task<(AiToolResult Result, AssistantAction? Action)> ExecuteAsync(AiToolUse call, bool canEdit, CancellationToken ct, Library.Agent? agent = null)
     {
         try
         {
+            if (!Library.AgentRuntime.Allows(agent, call.Name))
+                return (new AiToolResult(call.Id, $"The '{agent!.DisplayName}' agent isn't allowed to use {call.Name}. Tell the user how to do it themselves, or that they can allow it under AI → Agents & skills.", true), null);
             if (!canEdit && !ReadOnlyTools.Contains(call.Name))
                 return (new AiToolResult(call.Id, "Editing is switched off in the assistant settings. Tell the user how to do it instead.", true), null);
 
@@ -163,6 +170,7 @@ public sealed class AssistantTools
                 "select" => SelectShapes(call.Input),
                 "delete_shapes" => DeleteShapes(call.Input),
                 "generate_design" => await GenerateDesign(call.Input, ct),
+                "refine_design" => await RefineDesign(call.Input, ct),
                 _ => throw new ToolError($"Unknown tool '{call.Name}'."),
             };
             return (new AiToolResult(call.Id, text), summary == null ? null : new AssistantAction(call.Name, summary));
@@ -549,6 +557,30 @@ public sealed class AssistantTools
         var b = ArrayTool.BoundsOf(shapes);
         var summary = Inv($"Added a {b.Width:0.#} × {b.Height:0.#} mm design");
         return (summary + Inv($" at x {b.MinX:0.#}, y {b.MinY:0.#} as {shapes.Count} shape(s): {string.Join(", ", shapes.Select(s => $"\"{s.Name}\" on '{P.FindLayer(s.LayerId)?.Name}'"))}. {result.Notes}"), summary);
+    }
+
+    private async Task<(string, string?)> RefineDesign(JsonObject a, CancellationToken ct)
+    {
+        var change = a.Str("change");
+        if (string.IsNullOrWhiteSpace(change)) throw new ToolError("change is required.");
+        var targets = Resolve(a.Str("target"));
+        var export = SvgExporter.FromShapes(P, targets) ?? throw new ToolError("Only vector shapes can be redrawn. Images need the image tools instead.");
+        if (export.TooDetailed) throw new ToolError("Those shapes are too detailed to redraw in one go. Ask the user to select a smaller part.");
+        var request = new DesignRequest { Description = "", WidthMm = Math.Max(export.Bounds.Width, 1), Style = export.Style, AvailableFonts = _host.InstalledFonts };
+        var task = _host.ReviseDesign(export.Svg, change, request, ct) ?? throw new ToolError("AI design isn't available right now.");
+        var result = await task;
+        var shapes = DesignShapes.Build(result, P, export.Style, export.Bounds.MinX, export.Bounds.MinY);
+        var oldIds = export.Shapes.Select(s => s.Id).ToHashSet();
+        _host.BeginEdit("Assistant: refine design");
+        P.Shapes.RemoveAll(s => oldIds.Contains(s.Id));
+        P.Shapes.AddRange(shapes);
+        _lastAdded = shapes.Select(s => s.Id).ToList();
+        _host.EndEdit(_lastAdded);
+        var b = ArrayTool.BoundsOf(shapes);
+        var summary = Inv($"Redrew {export.Shapes.Count} shape(s): {Short(change)}");
+        return (Inv($"Replaced {export.Shapes.Count} shape(s) with the revised design, {b.Width:0.#} × {b.Height:0.#} mm at x {b.MinX:0.#}, y {b.MinY:0.#}. {result.Notes} The user can undo with Ctrl+Z."), summary);
+
+        static string Short(string s) => s.Length > 60 ? s[..60].TrimEnd() + "…" : s;
     }
 
     private static string Inv(FormattableString s) => s.ToString(CultureInfo.InvariantCulture);

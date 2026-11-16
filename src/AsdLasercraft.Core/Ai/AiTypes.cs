@@ -11,7 +11,8 @@ public sealed record AiText(string Text) : AiContent;
 public sealed record AiImage(string MediaType, byte[] Data) : AiContent;
 
 /// <summary>The model asking the app to run one of its tools.</summary>
-public sealed record AiToolUse(string Id, string Name, JsonObject Input) : AiContent;
+/// <remarks><paramref name="ProviderData"/> is opaque data some providers need echoed back with the call (e.g. Gemini thought signatures).</remarks>
+public sealed record AiToolUse(string Id, string Name, JsonObject Input, JsonObject? ProviderData = null) : AiContent;
 
 /// <summary>The app's answer to an <see cref="AiToolUse"/>.</summary>
 public sealed record AiToolResult(string ToolUseId, string Content, bool IsError = false) : AiContent;
@@ -68,7 +69,8 @@ public sealed class AiException : Exception
 public enum AiErrorKind { NoKey, BadKey, RateLimited, Overloaded, Network, BadRequest, Server, BadResponse, Cancelled }
 
 /// <summary>
-/// Anything that can answer an <see cref="AiRequest"/>. The real implementation is <see cref="ClaudeClient"/>;
+/// Anything that can answer an <see cref="AiRequest"/>. Real implementations are <see cref="ClaudeClient"/>,
+/// <see cref="OpenAiCompatibleClient"/> and <see cref="GeminiClient"/> (see <see cref="AiClientFactory"/>);
 /// tests and the UI smoke test use <see cref="FakeAiClient"/> so they never need a key or a network.
 /// </summary>
 public interface IAiClient

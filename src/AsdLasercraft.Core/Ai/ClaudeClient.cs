@@ -25,6 +25,8 @@ public sealed class ClaudeClient : IAiClient, IDisposable
     private readonly bool _ownsHttp;
 
     public string Model { get; set; } = DefaultModel;
+    /// <summary>The messages endpoint; change it only for a proxy or gateway that speaks the Claude Messages API.</summary>
+    public Uri EndpointUri { get; set; } = Endpoint;
 
     public ClaudeClient(Func<string?> apiKey, HttpClient? http = null)
     {
@@ -42,7 +44,7 @@ public sealed class ClaudeClient : IAiClient, IDisposable
             throw new AiException(AiErrorKind.NoKey, "No Claude API key has been set up yet. Add one in AI → AI settings.");
 
         var body = BuildBody(request, request.Model ?? Model);
-        using var msg = new HttpRequestMessage(HttpMethod.Post, Endpoint)
+        using var msg = new HttpRequestMessage(HttpMethod.Post, EndpointUri)
         {
             Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
         };
@@ -82,13 +84,12 @@ public sealed class ClaudeClient : IAiClient, IDisposable
     }
 
     /// <summary>Turns an HTTP failure into a message a user can act on.</summary>
-    public static AiException ErrorFor(HttpStatusCode status, string body)
+    public static AiException ErrorFor(HttpStatusCode status, string body, string provider = "Claude")
     {
-        string detail = "";
-        try { detail = JsonNode.Parse(body)?["error"]?["message"]?.GetValue<string>() ?? ""; } catch (JsonException) { }
+        string detail = AiHttp.ErrorDetail(body);
         return (int)status switch
         {
-            401 or 403 => new AiException(AiErrorKind.BadKey, "The Claude API key was rejected. Check it in AI → AI settings."),
+            401 or 403 => new AiException(AiErrorKind.BadKey, $"The {provider} API key was rejected. Check it in AI → AI settings." + (provider == "Claude" ? "" : Suffix(detail))),
             429 => new AiException(AiErrorKind.RateLimited, "Too many AI requests in a short time (or the account is out of credit). Wait a moment and try again."),
             529 => new AiException(AiErrorKind.Overloaded, "The AI service is busy right now. Try again in a minute."),
             >= 500 => new AiException(AiErrorKind.Server, "The AI service had a problem. Try again in a minute."),

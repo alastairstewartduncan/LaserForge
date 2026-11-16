@@ -67,6 +67,40 @@ public sealed class DesignGenerator
     /// <summary>True once a design has been made, so <see cref="RefineAsync"/> can adjust it.</summary>
     public bool HasDesign => _history.Count >= 2;
 
+    /// <summary>Agent instructions and skills to apply on top of the built-in drawing rules (see AgentRuntime.Compose).</summary>
+    public string? ExtraInstructions { get; set; }
+
+    /// <summary>Overrides the client's model for this generator (an agent's own model choice).</summary>
+    public string? Model { get; set; }
+
+    /// <summary>The SVG of the most recent design, as the model wrote it.</summary>
+    public string? LastSvg { get; private set; }
+
+    /// <summary>
+    /// Starts from an existing design (as SVG in millimetres) and applies a change to it, e.g. the user's own
+    /// shapes exported from the project. Afterwards <see cref="RefineAsync"/> can adjust the result further.
+    /// </summary>
+    public Task<DesignResult> ReviseAsync(string existingSvg, string change, DesignRequest request, CancellationToken ct = default)
+    {
+        _history.Clear();
+        _lastRequest = request;
+        var fonts = request.AvailableFonts.Count > 0 ? string.Join(", ", PreferredFonts(request.AvailableFonts)) : "Arial, Georgia, Times New Roman, Segoe UI, Impact";
+        _history.Add(AiMessage.User($"""
+            Here is an existing design from the user's project, as SVG in millimetres:
+
+            ```svg
+            {existingSvg.Trim()}
+            ```
+
+            Please change it: {change.Trim()}
+            Keep everything the change doesn't affect as close to the original as you can. Keep the overall size ({SizeText(request)}).
+            {(request.Description.Trim().Length > 0 ? "About the design: " + request.Description.Trim() : "")}
+            Installed fonts you can use for any new lettering: {fonts}
+            Reply with the complete new SVG.
+            """));
+        return RunAsync(request, ct);
+    }
+
     public Task<DesignResult> GenerateAsync(DesignRequest request, CancellationToken ct = default)
     {
         _history.Clear();
@@ -89,9 +123,10 @@ public sealed class DesignGenerator
         var response = await _client.SendAsync(new AiRequest
         {
             Purpose = "design",
-            System = SystemPrompt,
+            System = SystemPrompt + Library.AgentRuntime.Section("Design guidance", ExtraInstructions ?? ""),
             Messages = _history.ToList(),
             MaxTokens = 8000,
+            Model = string.IsNullOrWhiteSpace(Model) ? null : Model,
         }, ct); // no ConfigureAwait(false): text is outlined with WPF fonts, which want the caller's (UI) thread
 
         var text = response.Text;
@@ -106,6 +141,7 @@ public sealed class DesignGenerator
             throw;
         }
         _history.Add(AiMessage.Assistant(text));
+        LastSvg = result.Svg;
         return result;
     }
 

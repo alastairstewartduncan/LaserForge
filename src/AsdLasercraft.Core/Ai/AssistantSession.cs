@@ -1,3 +1,4 @@
+using AsdLasercraft.Core.Ai.Library;
 using AsdLasercraft.Core.Grbl;
 
 namespace AsdLasercraft.Core.Ai;
@@ -20,13 +21,32 @@ public sealed class AssistantSession
     public const int MaxToolRounds = 8;
     private const int MaxHistoryMessages = 30;
 
-    private readonly IAiClient _client;
+    private IAiClient _client;
     private readonly IAssistantHost _host;
     private readonly AssistantTools _tools;
     private readonly List<AiMessage> _history = new();
 
     /// <summary>When false the assistant can only look and advise, never change the project.</summary>
     public bool CanEdit { get; set; } = true;
+
+    /// <summary>The client to talk to. Can be swapped mid-conversation when the provider or agent changes.</summary>
+    public IAiClient Client { get => _client; set => _client = value; }
+
+    /// <summary>Overrides the client's model (an agent's own model choice).</summary>
+    public string? Model { get; set; }
+
+    /// <summary>The agent whose role, skills and tool limits apply; null = the plain assistant with every tool.</summary>
+    public Agent? Agent { get; set; }
+
+    /// <summary>Where the agent's skills are looked up.</summary>
+    public AiLibrary? Library { get; set; }
+
+    /// <summary>False when the chosen model can't call tools: the assistant then only gives advice.</summary>
+    public bool ToolsSupported { get; set; } = true;
+
+    /// <summary>The tools offered on the next turn, after the edit switch, the model's abilities and the agent's limits.</summary>
+    public List<AiTool> CurrentTools() =>
+        ToolsSupported ? AgentRuntime.FilterTools(Agent, AssistantTools.Definitions(CanEdit)) : new List<AiTool>();
 
     public AssistantSession(IAiClient client, IAssistantHost host)
     {
@@ -55,8 +75,9 @@ public sealed class AssistantSession
                     Purpose = "assistant",
                     System = BuildSystemPrompt(),
                     Messages = _history.ToList(),
-                    Tools = AssistantTools.Definitions(CanEdit),
+                    Tools = CurrentTools(),
                     MaxTokens = 2000,
+                    Model = string.IsNullOrWhiteSpace(Model) ? null : Model,
                 }, ct);
                 inTokens += response.Usage.InputTokens;
                 outTokens += response.Usage.OutputTokens;
@@ -85,7 +106,7 @@ public sealed class AssistantSession
                 var results = new List<AiContent>();
                 foreach (var call in calls)
                 {
-                    var (result, action) = await _tools.ExecuteAsync(call, CanEdit, ct);
+                    var (result, action) = await _tools.ExecuteAsync(call, CanEdit, ct, Agent);
                     results.Add(result);
                     if (action != null) actions.Add(action);
                 }
@@ -112,12 +133,20 @@ public sealed class AssistantSession
     public string BuildSystemPrompt()
     {
         var console = _host.RecentConsole.Count == 0 ? "(nothing yet)" : string.Join("\n", _host.RecentConsole.TakeLast(15));
+        var tools = CurrentTools();
+        bool canChange = tools.Any(t => !AssistantTools.ReadOnlyTools.Contains(t.Name));
+        var limits = !ToolsSupported
+            ? "\nThe current AI model can't use tools, so you cannot see live project details beyond what is below or change anything: give advice and step-by-step instructions instead."
+            : CanEdit && !canChange ? "\nIn your current role you have no editing tools: only advise."
+            : CanEdit && Agent is { HasAllTools: false } ? "\nIn your current role you only have these editing tools: " + string.Join(", ", tools.Where(t => !AssistantTools.ReadOnlyTools.Contains(t.Name)).Select(t => t.Name)) + ". For anything else, explain how the user can do it."
+            : "";
+        var agentSection = Agent == null ? "" : AgentRuntime.Section($"Your role: {Agent.DisplayName}", AgentRuntime.Compose(Agent, Library));
         return $"""
             You are the assistant built into A·S·D Lasercraft, a Windows app for designing and burning with GRBL diode lasers.
             Be friendly, practical and brief (a few sentences; short lists when useful). Use UK English and millimetres.
 
             What you can do: answer questions about laser settings, materials, the app and GRBL messages; and{(CanEdit ? "" : " (editing is OFF – only advise)")} change the
-            user's design with your tools: layers and their settings, material presets, text, shapes, moving/resizing, arrays, and new AI artwork.
+            user's design with your tools: layers and their settings, material presets, text, shapes, moving/resizing, arrays, new AI artwork, and redrawing existing artwork with a change (refine_design).{limits}
             What you can't do: you cannot frame, start, pause or stop a burn, connect to the laser, or send G-code. Never say you have.
             When the user wants to burn, tell them to use Frame then Start on the Laser tab (or Preview to simulate it first).
 
@@ -138,6 +167,6 @@ public sealed class AssistantSession
 
             GRBL codes, as the app explains them:
             {GrblCodes.ReferenceText()}
-            """;
+            """ + agentSection;
     }
 }
