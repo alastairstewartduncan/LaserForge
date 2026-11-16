@@ -32,10 +32,15 @@
             </Grid.ColumnDefinitions>
 
             <!-- brief -->
+            <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="20,16,14,12">
+                <StackPanel Margin="20,16,14,6">
                     <TextBlock x:Name="PromptCaption" Text="WHAT SHOULD IT LOOK LIKE?" Style="{StaticResource Caption}" Margin="2,0,2,4" />
-                    <TextBox x:Name="PromptBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="110" MaxHeight="200" VerticalContentAlignment="Top" Padding="8,6"
+                    <TextBox x:Name="PromptBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="84" MaxHeight="200" VerticalContentAlignment="Top" Padding="8,6"
                              TextChanged="PromptBox_TextChanged"
                              ToolTip="Describe the design. Put any exact wording in quotes." />
                     <StackPanel x:Name="NewDesignPanel">
@@ -69,11 +74,12 @@
                     <!-- designer, skills and review options are built in code -->
                     <StackPanel x:Name="AgentPanel" Margin="0,4,0,0" />
 
-                    <Button x:Name="GenerateButton" Style="{StaticResource PrimaryButton}" MinHeight="40" Margin="2,16,2,2" Click="Generate_Click" IsEnabled="False">
-                        <c:Glyph x:Name="GenerateGlyph" Data="{StaticResource I.Sparkle}" Text="Create design" Size="16" />
-                    </Button>
                 </StackPanel>
             </ScrollViewer>
+            <Button x:Name="GenerateButton" Grid.Row="1" Style="{StaticResource PrimaryButton}" MinHeight="40" Margin="22,6,16,12" Click="Generate_Click" IsEnabled="False">
+                <c:Glyph x:Name="GenerateGlyph" Data="{StaticResource I.Sparkle}" Text="Create design" Size="16" />
+            </Button>
+            </Grid>
 
             <!-- preview -->
             <Border Grid.Column="1" Margin="0,16,20,12" CornerRadius="12" Background="{StaticResource Brush.Bg0}" BorderBrush="{StaticResource Brush.Border}" BorderThickness="1">

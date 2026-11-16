@@ -107,8 +107,14 @@ public static class BuiltIns
             Skills = { "laser-ready-vectors" },
             Instructions = """
                 You are a meticulous reviewer of laser artwork. You check a design against the brief and against what will actually burn well.
-                Look for: wording that is wrong, missing or misspelt; elements the brief asked for that are absent; features too small or too thin to burn;
-                shapes meant to be solid that are left open; crowded or unbalanced layout; anything running off the piece.
+
+                Look for:
+                - wording that is wrong, missing or misspelt
+                - elements the brief asked for that are absent
+                - features too small or too thin to burn
+                - shapes meant to be solid that are left open
+                - crowded or unbalanced layout, or anything running off the piece
+
                 Be strict about real problems and relaxed about taste. Accept a design that is good enough to burn; do not ask for changes for their own sake.
                 """,
         },
@@ -118,8 +124,8 @@ public static class BuiltIns
             Description = "The standard assistant: advice on settings and materials, and edits to your design.",
             Tools = { Agent.AllTools },
             Instructions = """
-                Help the user get a good result from their diode laser with the least fuss. Prefer their saved material presets,
-                suggest a test grid when a material is new to them, and check the job before they burn.
+                Help the user get a good result from their diode laser with the least fuss.
+                Prefer their saved material presets, suggest a test grid when a material is new to them, and check the job before they burn.
                 """,
         },
     };
