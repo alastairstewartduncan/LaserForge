@@ -20,7 +20,7 @@
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="Test grid reader" FontSize="18" FontWeight="SemiBold" FontFamily="{StaticResource Font.Display}" />
                     <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,0"
-                               Text="Burn Tools → Material test grid, photograph it, and Claude picks the best speed and power for your machine." />
+                               Text="Burn Tools → Material test grid, photograph it, and the AI picks the best speed and power for your machine." />
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -114,7 +114,7 @@
 
         <DockPanel Grid.Row="2" Margin="20,0,20,18" LastChildFill="False">
             <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Style="{StaticResource Muted}" FontSize="12" MaxWidth="420" TextWrapping="Wrap"
-                       Text="The photo is sent to Claude only when you click Read the grid." />
+                       Text="The photo is sent to your AI provider only when you click Read the grid." />
             <Button x:Name="SaveButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" MinWidth="150" IsEnabled="False" Click="Save_Click">
                 <c:Glyph Data="{StaticResource I.Material}" Text="Save as preset" Size="15" />
             </Button>

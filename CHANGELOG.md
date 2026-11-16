@@ -2,6 +2,43 @@
 
 All notable changes to A·S·D Lasercraft (formerly LaserForge). Versions follow [semantic versioning](https://semver.org).
 
+## [0.5.0] – 2026-11-16
+
+### Added – choose your AI provider and model
+- **AI settings** now has a provider list: **Anthropic Claude**, **OpenAI**, **Google Gemini**, **OpenRouter**, **Ollama** and **LM Studio** (models running on your own PC, no key needed), plus a **custom** entry for any other OpenAI-compatible service. Each provider keeps its own key (in Windows Credential Manager), address and model, so you can switch back and forth.
+- **Get list** asks the provider which models your key can use, so you pick from a live list instead of typing model names.
+- Two tick boxes say what the chosen model can do: **read pictures** (needed for test-grid photos) and **use tools** (needed for the assistant to edit). Features that need an ability the model lacks explain why instead of failing.
+- Your existing Claude key and model carry over untouched.
+
+### Added – agents and skills
+- **AI → Agents & skills**: a **skill** is a reusable pack of know-how (a material, a product type, a house style); an **agent** is a role for the AI – a *designer*, a *critic* or an *assistant* – with its own instructions, attached skills and, optionally, its own provider and model.
+- Assistant agents have a **tool allow-list**: untick a tool and the agent is refused it even if the AI asks. Looking at the project and running the pre-flight check are always allowed, and as before no tool can frame, start or stop the laser.
+- Starters are included: Laser designer, Burn critic and Workshop helper agents; Laser-ready vectors, Plywood cut-outs, Slate coasters and Round badges skills. Edit, duplicate or delete them freely.
+- Skills and agents are plain markdown files in `%AppData%\ASD Lasercraft\ai`, so they can be read, backed up and shared without the app.
+- The Assistant tab has an **agent picker**, and the design window lets you choose the designer, tick extra skills for the job and choose the critic.
+
+### Added – import and export between AI tools
+- **Import** SKILL.md files and `.zip`/`.skill` skill packs, agent `.md` files with a header (including `.agent.md` and rules files such as `.mdc`), saved instructions as `.txt`, and assistant `.json`. **Paste** imports instructions copied from another AI tool.
+- **Export** as a skill pack (`name/SKILL.md` in a zip), a markdown file, plain text with the agent's skills included (to paste into any assistant's custom instructions), or JSON. **Export everything** makes one zip for backup or another PC.
+- Imports are treated as untrusted text. An imported agent arrives with its **tools switched off and no model chosen**, and the import report says what it asked for, which of the other tool's tools don't exist here, and which supporting files (scripts, references) couldn't come across.
+
+### Added – AI help writing agents and skills
+- **Draft with AI**: describe the skill or agent you want and get a first version; or select a design you're happy with and have its style written up as a skill.
+- **Improve with AI**: a review that tightens wording, makes vague rules specific and takes your note of what's been going wrong. Shown side by side with the current version.
+- Nothing is saved until you click **Use this**. An improvement can never give an agent more tools than it already had, or change its provider or model.
+
+### Added – review and refine designs
+- **Review and refine before showing me** (on by default in Describe a design): the designer drafts, then built-in checks and the critic agent review, and the designer revises until the draft passes or the round limit is reached. Every draft is kept as a chip so you can flip between them; the best one is starred.
+- The built-in checks are measured in code, not left to a model's opinion: fits the bed, solid areas are really closed, nothing thinner than about 0.4 mm, no specks, no path drawn twice, a closed cut outline that contains the artwork, and every piece of wording you put in quotes is present.
+- **AI → Refine selection with AI**: select shapes already in your project, say what should change, and compare before and after. The result replaces the originals in the same place as one undo step.
+- The assistant has a matching **refine_design** tool, and the artwork it generates now goes through your chosen designer agent and its skills.
+
+### Engineering
+- `OpenAiCompatibleClient` and `GeminiClient` alongside `ClaudeClient`, behind the same `IAiClient`; provider profiles, a client factory and a model lister. Gemini thought signatures are returned with tool calls; the OpenAI client switches between `max_tokens` and `max_completion_tokens` if a model rejects one.
+- New `AsdLasercraft.Core.Ai.Library` namespace: front-matter parser, library storage, import/export, agent runtime (prompt composition and tool limits) and the AI assist. `DesignChecks`, `DesignRefiner` and `SvgExporter` in `Core.Ai`.
+- Agent and skill text is added after the app's own rules with a note that it cannot override them.
+- 29 new core tests (134 total), all against scripted HTTP and fake clients. The UI smoke test now also opens the provider settings for every provider, a review run, the refine window, Agents & skills (loading every agent) and an AI draft for review.
+
 ## [0.4.0] – 2026-10-16
 
 ### Added – AI (optional, powered by Claude)

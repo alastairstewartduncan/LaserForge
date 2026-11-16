@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:AsdLasercraft.App.Controls"
         Style="{StaticResource AppWindow}"
-        Title="AI settings" Width="560" SizeToContent="Height" ResizeMode="NoResize"
+        Title="AI settings" Width="600" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
     <StackPanel>
         <Border Background="{StaticResource Brush.HeaderGradient}" Padding="24,20" BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,0,0,1">
@@ -14,13 +14,23 @@
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="AI features" FontSize="19" FontWeight="SemiBold" FontFamily="{StaticResource Font.Display}" />
                     <TextBlock Style="{StaticResource Muted}" Margin="0,3,0,0" TextWrapping="Wrap"
-                               Text="Design from a description, read test grids and chat with the assistant – powered by Claude." />
+                               Text="Design from a description, read test grids and chat with the assistant – with the AI provider and model you choose." />
                 </StackPanel>
             </DockPanel>
         </Border>
 
-        <StackPanel Margin="22,16,22,0">
-            <TextBlock Text="CLAUDE API KEY" Style="{StaticResource Caption}" Margin="2,0,2,4" />
+        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="540">
+        <StackPanel Margin="22,16,22,4">
+            <TextBlock Text="AI PROVIDER" Style="{StaticResource Caption}" Margin="2,0,2,4" />
+            <ComboBox x:Name="ProviderCombo" DisplayMemberPath="Name" SelectionChanged="ProviderCombo_SelectionChanged"
+                      ToolTip="Which AI service to use. Each keeps its own key and model, so you can switch back and forth." />
+
+            <StackPanel x:Name="AddressPanel">
+                <TextBlock Text="ADDRESS" Style="{StaticResource Caption}" Margin="2,12,2,4" />
+                <TextBox x:Name="BaseUrlBox" TextChanged="Field_Changed" ToolTip="The API address, e.g. https://api.openai.com/v1 or http://localhost:11434/v1 for a model running on this PC." />
+            </StackPanel>
+
+            <TextBlock x:Name="KeyCaption" Text="API KEY" Style="{StaticResource Caption}" Margin="2,12,2,4" />
             <DockPanel>
                 <Button x:Name="RemoveKeyButton" DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Click="RemoveKey_Click" ToolTip="Forget the saved key">
                     <c:Glyph Data="{StaticResource I.Delete}" Size="15" />
@@ -28,33 +38,42 @@
                 <PasswordBox x:Name="KeyBox" PasswordChanged="KeyBox_PasswordChanged" />
             </DockPanel>
             <TextBlock x:Name="KeyStatus" Style="{StaticResource Muted}" FontSize="12" Margin="3,5,3,0" TextWrapping="Wrap" />
-            <TextBlock Margin="3,6,3,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource Brush.TextMuted}">
+            <TextBlock x:Name="KeyHelp" Margin="3,6,3,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource Brush.TextMuted}">
                 <Run Text="Get a key from" />
-                <Hyperlink x:Name="ConsoleLink" Click="ConsoleLink_Click" Foreground="{StaticResource Brush.Info}">console.anthropic.com</Hyperlink><Run Text=". Usage is billed to your Anthropic account. The key is stored encrypted in Windows Credential Manager, never in a file." />
+                <Hyperlink x:Name="ConsoleLink" Click="ConsoleLink_Click" Foreground="{StaticResource Brush.Info}"><Run x:Name="ConsoleLinkText" Text="console.anthropic.com" /></Hyperlink><Run Text=". Usage is billed to your own account with that provider. Keys are stored encrypted in Windows Credential Manager, never in a file." />
             </TextBlock>
 
             <TextBlock Text="MODEL" Style="{StaticResource Caption}" Margin="2,14,2,4" />
-            <ComboBox x:Name="ModelCombo" IsEditable="True" ToolTip="The Claude model to use. The default is a good balance of quality, speed and cost." />
+            <DockPanel>
+                <Button x:Name="FetchModelsButton" DockPanel.Dock="Right" Click="FetchModels_Click" Margin="6,0,0,0" ToolTip="Ask the provider which models your key can use">
+                    <c:Glyph Data="{StaticResource I.Update}" Text="Get list" Size="14" />
+                </Button>
+                <ComboBox x:Name="ModelCombo" IsEditable="True" ToolTip="The model to use. Pick from the list or type a model name." />
+            </DockPanel>
+            <TextBlock x:Name="ModelHint" Style="{StaticResource Muted}" FontSize="12" Margin="3,5,3,0" TextWrapping="Wrap" />
+            <CheckBox x:Name="VisionCheck" Margin="0,8,0,0" Content="This model can read pictures (needed to read test-grid photos)" />
+            <CheckBox x:Name="ToolsCheck" Content="This model can use tools (needed for the assistant to change my design)" />
 
             <TextBlock Text="OPTIONS" Style="{StaticResource Caption}" Margin="2,14,2,4" />
             <CheckBox x:Name="EnabledCheck" Content="Show AI features (menu and Assistant tab)" />
             <CheckBox x:Name="CanEditCheck" Content="Let the assistant change my design (every change can be undone)" />
-            <CheckBox x:Name="PhotoCheck" Content="Allow test-grid photos to be sent to Claude for analysis" />
+            <CheckBox x:Name="PhotoCheck" Content="Allow test-grid photos to be sent to the AI provider for analysis" />
 
             <Border Margin="0,14,0,0" Padding="14,10" CornerRadius="10" BorderThickness="1" BorderBrush="{StaticResource Brush.Border}" Background="{StaticResource Brush.Panel}">
                 <DockPanel>
                     <c:Glyph DockPanel.Dock="Left" Data="{StaticResource I.Info}" Foreground="{StaticResource Brush.Info}" Size="18" Margin="0,1,10,0" VerticalAlignment="Top" />
                     <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource Brush.TextMuted}"
-                               Text="What leaves your PC: your design descriptions, assistant messages with a text summary of your project, and test-grid photos when you choose to read one. Background removal, line art and auto-tune run entirely on your PC. The AI can never start the laser." />
+                               Text="What goes to the provider you chose: your design descriptions (and the shapes you ask it to refine), assistant messages with a text summary of your project, your agents and skills, and test-grid photos when you choose to read one. With a provider on this PC, nothing leaves it. Background removal, line art and auto-tune run entirely on your PC. The AI can never start the laser." />
                 </DockPanel>
             </Border>
         </StackPanel>
+        </ScrollViewer>
 
         <DockPanel Margin="22,18,22,20" LastChildFill="False">
             <Button x:Name="TestButton" DockPanel.Dock="Left" Click="Test_Click">
                 <c:Glyph Data="{StaticResource I.Check}" Text="Test connection" Size="15" />
             </Button>
-            <TextBlock x:Name="TestResult" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="10,0,0,0" MaxWidth="200" TextWrapping="Wrap" FontSize="12" />
+            <TextBlock x:Name="TestResult" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="10,0,0,0" MaxWidth="240" TextWrapping="Wrap" FontSize="12" />
             <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" MinWidth="110" IsDefault="True" Click="Save_Click" Content="Save" />
             <Button DockPanel.Dock="Right" Content="Cancel" IsCancel="True" MinWidth="90" Margin="2,2,8,2" />
         </DockPanel>

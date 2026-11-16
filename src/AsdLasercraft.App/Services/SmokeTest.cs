@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using AsdLasercraft.App.Dialogs;
 using AsdLasercraft.App.Views;
 using AsdLasercraft.Core.Ai;
+using AsdLasercraft.Core.Ai.Library;
 using AsdLasercraft.Core.Generators;
 using AsdLasercraft.Core.Imaging;
 using AsdLasercraft.Core.Tools;
@@ -139,6 +140,10 @@ public static class SmokeTest
                 dlg.Show();
                 Pump(200);
                 Save(dlg, Path.Combine(outDir, "ai-settings.png"));
+                dlg.SmokeSelect(AiProviderCatalog.OllamaId);
+                Pump(200);
+                Save(dlg, Path.Combine(outDir, "ai-settings-local.png"));
+                foreach (var p in AiProviderCatalog.Defaults()) dlg.SmokeSelect(p.Id); // every provider's fields must load
                 dlg.Close();
             });
 
@@ -151,6 +156,67 @@ public static class SmokeTest
                 dlg.SmokeShow("A round coaster with mountains under a crescent moon, \"WILD\" across the top and a cut outline", design, DesignStyle.EngraveAndCut, 90);
                 Pump(300);
                 Save(dlg, Path.Combine(outDir, "ai-design.png"));
+                dlg.Close();
+            });
+
+            Step(log, "design review", () =>
+            {
+                // A finished review run: a first draft with no cut outline, then the revision that passed.
+                var prompt = "A round coaster with mountains under a crescent moon, \"WILD\" across the top and a cut outline";
+                var request = new DesignRequest { Description = prompt, WidthMm = 90, Style = DesignStyle.EngraveAndCut };
+                var noCut = System.Text.RegularExpressions.Regex.Replace(DemoDesignReply, "<g id=\"cut\">.*?</g>", "", System.Text.RegularExpressions.RegexOptions.Singleline);
+                var first = DesignGenerator.Parse(noCut, request, WpfTextOutliner.Instance);
+                var second = DesignGenerator.Parse(DemoDesignReply, request, WpfTextOutliner.Instance);
+                var outcome = new RefineOutcome { Summary = "Passed review after 1 revision(s)." };
+                outcome.Rounds.Add(new RefineRound
+                {
+                    Number = 1, Design = first, Findings = DesignChecks.Run(first, request, DesignStyle.EngraveAndCut, 400, 400),
+                    Critic = new CriticVerdict { Accept = false, Score = 5, Issues = { "No cut outline, so the coaster can't be cut out" }, Changes = "Add a circular cut outline." },
+                });
+                outcome.Rounds.Add(new RefineRound
+                {
+                    Number = 2, Design = second, Findings = DesignChecks.Run(second, request, DesignStyle.EngraveAndCut, 400, 400),
+                    Critic = new CriticVerdict { Accept = true, Score = 9, Praise = "Bold silhouette, wording is clear and the outline leaves a good margin." },
+                });
+                outcome.Best = outcome.Rounds[1];
+                var dlg = new DesignWindow(main!, main!.SmokeAi, null, 400, 400);
+                dlg.Show();
+                dlg.SmokeShowOutcome(prompt, outcome, DesignStyle.EngraveAndCut, 90);
+                Pump(300);
+                Save(dlg, Path.Combine(outDir, "ai-design-review.png"));
+                dlg.Close();
+            });
+
+            Step(log, "refine selection", () =>
+            {
+                var export = main!.SmokeExportVectors() ?? throw new InvalidOperationException("The demo project has no vector shapes to refine.");
+                var dlg = new DesignWindow(main, main.SmokeAi, export, 400, 400);
+                dlg.Show();
+                Pump(300);
+                Save(dlg, Path.Combine(outDir, "ai-refine.png"));
+                dlg.Close();
+            });
+
+            Step(log, "agents and skills", () =>
+            {
+                var dlg = new LibraryWindow(main!, main!.SmokeAi, () => main.SmokeExportVectors());
+                dlg.Show();
+                Pump(200);
+                foreach (var a in main.SmokeAi.Library.Agents) dlg.SmokeSelect(a.Name); // every agent must load into the editor
+                dlg.SmokeSelect(BuiltIns.HelperName);
+                Pump(250);
+                Save(dlg, Path.Combine(outDir, "ai-agents.png"));
+
+                var proposal = LibraryAssistant.Parse(
+                    "```markdown\n---\nname: scout-badge-designer\ntitle: Scout badge designer\ndescription: Designs round Scout badges for 3 mm plywood.\nrole: designer\nskills: [round-badges, plywood-cut-outs]\n---\n" +
+                    "You are a designer of Scout group badges, cut from 3 mm plywood at 60 mm across.\n\nKeep the group name curved round the top in bold capitals, the section name along the bottom, and one simple emblem in the centre. " +
+                    "Favour chunky shapes a child can recognise at arm's length.\n```\nNotes:\n- Assumed 60 mm badges because that is a common size for a woggle badge.\n- Attached the round badges and plywood cut-outs skills.",
+                    ImportAs.Agent, main.SmokeAi.Library);
+                var review = new ProposalWindow(dlg, "AI draft", null, proposal);
+                review.Show();
+                Pump(250);
+                Save(review, Path.Combine(outDir, "ai-agent-draft.png"));
+                review.Close();
                 dlg.Close();
             });
 

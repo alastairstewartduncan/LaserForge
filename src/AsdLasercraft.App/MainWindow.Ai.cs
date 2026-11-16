@@ -8,6 +8,7 @@ using AsdLasercraft.App.Controls;
 using AsdLasercraft.App.Dialogs;
 using AsdLasercraft.App.Services;
 using AsdLasercraft.Core.Ai;
+using AsdLasercraft.Core.Ai.Library;
 using AsdLasercraft.Core.Imaging;
 using AsdLasercraft.Core.Import;
 using AsdLasercraft.Core.Model;
@@ -31,10 +32,12 @@ public partial class MainWindow
         "What does my last alarm mean?",
     };
 
+    private sealed record AgentChoice(string Id, string Name);
+
     private void InitAi()
     {
         _ai = new AiServices(_settings);
-        _assistant = new AssistantSession(_ai.Client, new AssistantBridge(this)) { CanEdit = _settings.AssistantCanEdit };
+        _assistant = new AssistantSession(_ai.Client, new AssistantBridge(this)) { CanEdit = _settings.AssistantCanEdit, Library = _ai.Library };
         foreach (var text in Suggestions)
         {
             var chip = new Button { Content = text };
@@ -56,6 +59,7 @@ public partial class MainWindow
         AssistantTab.Visibility = vis;
         if (!_settings.AiEnabled && RightTabs.SelectedItem == AssistantTab) RightTabs.SelectedIndex = 0;
 
+        ApplyAssistantAgent();
         bool ready = _ai.IsConfigured;
         AiSetupCard.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
         ChatScroll.Visibility = ready ? Visibility.Visible : Visibility.Hidden;
@@ -66,14 +70,60 @@ public partial class MainWindow
         ChatEditToggle.IsChecked = _settings.AssistantCanEdit;
         _updatingUi = false;
         _assistant.CanEdit = _settings.AssistantCanEdit;
-        ChatStatus.Text = ready ? $"Claude · {_settings.AiModel}" : "Not set up";
+        var agent = _assistant.Agent;
+        var provider = _ai.ProviderFor(agent);
+        ChatStatus.Text = !ready ? "Not set up"
+            : _ai.IsFake ? "Demo"
+            : $"{provider.Name} · {_ai.ModelFor(agent) ?? provider.Model}{(_ai.SupportsTools(agent) ? "" : " · advice only")}";
+        ChatStatus.ToolTip = ready && !_ai.SupportsTools(agent)
+            ? "This model is marked as unable to use tools, so the assistant can only advise. Change that in AI → AI settings if the model supports tools."
+            : null;
+        ChatAgentCombo.IsEnabled = ready;
+    }
+
+    /// <summary>Fills the agent picker and points the assistant at the chosen agent, its provider and model.</summary>
+    private void ApplyAssistantAgent()
+    {
+        var agents = _ai.Library.AgentsFor(AgentRole.General).ToList();
+        var agent = agents.FirstOrDefault(a => a.Name == _settings.AssistantAgent);
+        var choices = new List<AgentChoice> { new("", "Standard assistant") };
+        choices.AddRange(agents.Select(a => new AgentChoice(a.Name, a.DisplayName)));
+        bool was = _updatingUi;
+        _updatingUi = true;
+        ChatAgentCombo.ItemsSource = choices;
+        ChatAgentCombo.SelectedItem = choices.FirstOrDefault(c => c.Id == (agent?.Name ?? "")) ?? choices[0];
+        _updatingUi = was;
+
+        _assistant.Agent = agent;
+        _assistant.Library = _ai.Library;
+        _assistant.Client = _ai.ClientFor(agent);
+        _assistant.Model = _ai.ModelFor(agent);
+        _assistant.ToolsSupported = _ai.SupportsTools(agent);
+    }
+
+    private void ChatAgent_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingUi || ChatAgentCombo.SelectedItem is not AgentChoice choice || choice.Id == _settings.AssistantAgent) return;
+        _settings.AssistantAgent = choice.Id;
+        _settings.Save();
+        RefreshAiUi();
+        ShowToast(choice.Id.Length == 0 ? "Back to the standard assistant" : $"The assistant is now acting as '{choice.Name}'", ToastKind.Info);
+    }
+
+    private void AiLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new LibraryWindow(this, _ai, () => SvgExporter.FromShapes(_project, Selected()));
+        win.ShowDialog();
+        if (!win.Changed) return;
+        _settings.Save();
+        RefreshAiUi();
     }
 
     /// <summary>True when AI can be used now; otherwise offers the settings window.</summary>
     private bool EnsureAiReady()
     {
         if (_ai.IsConfigured) return true;
-        if (MessageBox.Show(this, "The AI features need a Claude API key. Add one now?", "AI", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+        if (MessageBox.Show(this, "The AI features need an AI provider set up (an API key, or a model running on this PC). Set one up now?", "AI", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
             AiSettings_Click(this, new RoutedEventArgs());
         return _ai.IsConfigured;
     }
@@ -92,9 +142,32 @@ public partial class MainWindow
     private void AiDesign_Click(object sender, RoutedEventArgs e)
     {
         if (!EnsureAiReady()) return;
-        var win = new DesignWindow(this, _ai);
+        var win = new DesignWindow(this, _ai, null, _project.Machine.BedWidthMm, _project.Machine.BedHeightMm);
         if (win.ShowDialog() != true || win.Result is not { } design) return;
         AddDesign(design, win.ResultStyle);
+    }
+
+    /// <summary>Sends the selected vector shapes to the designer agent with a change, and swaps in the result.</summary>
+    private void AiRefineSelection_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureAiReady()) return;
+        var export = SvgExporter.FromShapes(_project, Selected());
+        if (export == null) { ShowToast("Select the vector shapes you want the AI to refine first.", ToastKind.Info); return; }
+        if (export.TooDetailed) { ShowToast("That selection is too detailed to refine in one go – select a smaller part.", ToastKind.Info); return; }
+
+        var win = new DesignWindow(this, _ai, export, _project.Machine.BedWidthMm, _project.Machine.BedHeightMm);
+        if (win.ShowDialog() != true || win.Result is not { } design) return;
+        var oldIds = export.Shapes.Select(s => s.Id).ToHashSet();
+        List<AsdLasercraft.Core.Model.Shape> shapes = new();
+        Edit(() =>
+        {
+            shapes = DesignShapes.Build(design, _project, export.Style, export.Bounds.MinX, export.Bounds.MinY);
+            _project.Shapes.RemoveAll(s => oldIds.Contains(s.Id));
+            _project.Shapes.AddRange(shapes);
+        });
+        LayersGrid.Items.Refresh();
+        Surface.SelectOnly(shapes.Select(s => s.Id));
+        ShowToast("Design refined – Ctrl+Z brings the original back");
     }
 
     private void AddDesign(DesignResult design, DesignStyle style)
@@ -116,6 +189,13 @@ public partial class MainWindow
     private void AiReadGrid_Click(object sender, RoutedEventArgs e)
     {
         if (!EnsureAiReady()) return;
+        if (!_ai.SupportsVision())
+        {
+            MessageBox.Show(this, $"Reading a test grid needs a model that can look at pictures, and {_ai.Active.Label} is marked as text-only.\n\n" +
+                                  "Choose a different provider or model in AI → AI settings (or tick \"This model can read pictures\" there if it can).",
+                            "Read a test grid", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
         var layer = ActiveLayer;
         var win = new TestGridWindow(this, _ai, _settings, Materials, AppSettings.MaterialsPath, layer);
         if (win.ShowDialog() != true || win.ApplyToLayer is not { } preset || layer == null) return;
@@ -471,8 +551,12 @@ public partial class MainWindow
             _w.UpdateJobEstimate();
         }
 
+        // The assistant's artwork goes through the user's chosen designer agent, so it follows the same skills.
         public Task<DesignResult>? GenerateDesign(DesignRequest request, CancellationToken ct) =>
-            new DesignGenerator(_w._ai.Client, WpfTextOutliner.Instance).GenerateAsync(request, ct);
+            _w._ai.NewDesigner(_w._ai.DesignerAgent).GenerateAsync(request, ct);
+
+        public Task<DesignResult>? ReviseDesign(string svg, string change, DesignRequest request, CancellationToken ct) =>
+            _w._ai.NewDesigner(_w._ai.DesignerAgent).ReviseAsync(svg, change, request, ct);
     }
 
     // ---- smoke test hooks
@@ -480,10 +564,12 @@ public partial class MainWindow
 
     internal void SmokeUseFakeAi(IAiClient client)
     {
-        _ai.Client = client;
-        _assistant = new AssistantSession(client, new AssistantBridge(this)) { CanEdit = true };
+        _ai.UseFake(client);
+        _assistant = new AssistantSession(client, new AssistantBridge(this)) { CanEdit = true, Library = _ai.Library };
         RefreshAiUi();
     }
 
     internal Task SmokeChat(string text) => SendChatAsync(text);
+
+    internal SvgExporter.ShapeExport? SmokeExportVectors() => SvgExporter.FromShapes(_project, _project.Shapes);
 }

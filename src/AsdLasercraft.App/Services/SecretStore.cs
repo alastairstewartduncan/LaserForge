@@ -4,8 +4,9 @@ using System.Text;
 namespace AsdLasercraft.App.Services;
 
 /// <summary>
-/// Keeps the Claude API key in Windows Credential Manager (per user, encrypted by Windows) rather than in the
-/// settings file. You can see or remove it under Control Panel → Credential Manager → Windows Credentials.
+/// Keeps AI provider API keys in Windows Credential Manager (per user, encrypted by Windows) rather than in the
+/// settings file, one entry per provider. You can see or remove them under Control Panel → Credential Manager →
+/// Windows Credentials.
 /// </summary>
 public static class SecretStore
 {
@@ -43,23 +44,35 @@ public static class SecretStore
     [DllImport("advapi32.dll")]
     private static extern void CredFree(IntPtr buffer);
 
-    private static string? _cache;
-    private static bool _loaded;
+    private static readonly Dictionary<string, string?> Cache = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The saved key, or null. Cached after the first read.</summary>
-    public static string? ApiKey
+    /// <summary>The Credential Manager entry for a provider. Claude keeps the name used by earlier versions.</summary>
+    public static string TargetFor(string providerId) =>
+        string.IsNullOrEmpty(providerId) || providerId == Core.Ai.AiProviderCatalog.AnthropicId ? ApiKeyTarget : $"ASD Lasercraft/AI key/{providerId}";
+
+    /// <summary>The saved Claude key, or null.</summary>
+    public static string? ApiKey => GetKey(Core.Ai.AiProviderCatalog.AnthropicId);
+
+    /// <summary>The saved key for a provider, or null. Cached after the first read.</summary>
+    public static string? GetKey(string providerId)
     {
-        get
+        lock (Cache)
         {
-            if (!_loaded) { _cache = Read(ApiKeyTarget); _loaded = true; }
-            return _cache;
+            if (!Cache.TryGetValue(providerId, out var key))
+            {
+                key = Read(TargetFor(providerId));
+                Cache[providerId] = key;
+            }
+            return key;
         }
     }
 
-    public static bool SaveApiKey(string key)
+    public static bool SaveApiKey(string key) => SaveKey(Core.Ai.AiProviderCatalog.AnthropicId, key, "Claude API");
+
+    public static bool SaveKey(string providerId, string key, string providerName)
     {
         key = key.Trim();
-        if (key.Length == 0) return DeleteApiKey();
+        if (key.Length == 0) return DeleteKey(providerId);
         var bytes = Encoding.Unicode.GetBytes(key);
         var blob = Marshal.AllocHGlobal(bytes.Length);
         try
@@ -68,15 +81,17 @@ public static class SecretStore
             var cred = new CREDENTIAL
             {
                 Type = CRED_TYPE_GENERIC,
-                TargetName = ApiKeyTarget,
+                TargetName = TargetFor(providerId),
                 Comment = "Used by A·S·D Lasercraft for its AI features.",
                 CredentialBlobSize = bytes.Length,
                 CredentialBlob = blob,
                 Persist = CRED_PERSIST_LOCAL_MACHINE,
-                UserName = "Claude API",
+                UserName = providerName,
             };
-            bool ok = CredWrite(ref cred, 0);
-            if (ok) { _cache = key; _loaded = true; }
+            bool ok;
+            try { ok = CredWrite(ref cred, 0); }
+            catch (Exception) { ok = false; }
+            if (ok) lock (Cache) Cache[providerId] = key;
             return ok;
         }
         finally
@@ -85,11 +100,14 @@ public static class SecretStore
         }
     }
 
-    public static bool DeleteApiKey()
+    public static bool DeleteApiKey() => DeleteKey(Core.Ai.AiProviderCatalog.AnthropicId);
+
+    public static bool DeleteKey(string providerId)
     {
-        bool ok = CredDelete(ApiKeyTarget, CRED_TYPE_GENERIC, 0) || Marshal.GetLastWin32Error() == 1168; // ERROR_NOT_FOUND
-        _cache = null;
-        _loaded = true;
+        bool ok;
+        try { ok = CredDelete(TargetFor(providerId), CRED_TYPE_GENERIC, 0) || Marshal.GetLastWin32Error() == 1168; } // ERROR_NOT_FOUND
+        catch (Exception) { ok = false; }
+        lock (Cache) Cache[providerId] = null;
         return ok;
     }
 

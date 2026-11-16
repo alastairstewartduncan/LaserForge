@@ -6,7 +6,7 @@ A Windows design-and-burn app for **GRBL diode lasers** (xTool, Atomstack, Sculp
 
 <p align="center"><img src="docs/screenshots/design.png" alt="A·S·D Lasercraft design view" width="900"></p>
 
-> **Status: v0.4.** Adds optional AI features powered by Claude. The core engine (G-code generation, dithering, GRBL streaming, SVG import, kerf, tracing, AI parsing and tools) is covered by 105 tests including golden G-code files, and CI opens every window of the app on Windows before each build is published. Always test new settings on scrap first.
+> **Status: v0.5.** Optional AI features with your choice of provider (Claude, OpenAI, Gemini, OpenRouter, or a model on your own PC), agents and skills you can import and export, and designs that are reviewed and refined before you see them. The core engine (G-code generation, dithering, GRBL streaming, SVG import, kerf, tracing, AI parsing and tools) is covered by 134 tests including golden G-code files, and CI opens every window of the app on Windows before each build is published. Always test new settings on scrap first.
 
 ## AI features (optional)
 
@@ -15,12 +15,16 @@ A Windows design-and-burn app for **GRBL diode lasers** (xTool, Atomstack, Sculp
 | **Describe a design** (Ctrl+G) | Type what you want – *"a round coaster with mountains and a moon, cut out"* – and Claude draws it as editable vectors. Lettering is outlined with your own installed fonts. Preview it, ask for changes ("make the text bigger"), then add it. Engrave, line-art and engrave-and-cut styles. | Claude (only the description is sent) |
 | **Read a test grid photo** | Burn a material test grid, photograph it, and Claude picks the best cell for your goal (dark engrave, light engrave, photo, or cut-through). Save it as a material preset or put it straight on a layer. The speeds and powers come from the grid itself, so they're exact. | Claude (the photo, when you click Read) |
 | **Assistant** (Ctrl+K) | A chat tab that knows your project, machine, presets and console. Ask about settings and materials, get alarms explained, or have it add text and shapes, set layers, apply presets, make arrays and generate artwork. Every change is one undo step; switch "Can edit" off for advice only. **It can never frame, start or stop the laser.** | Claude (messages plus a text summary of the project) |
+| **Review and refine** | A critic agent and built-in checks review each draft (missing wording, shapes that won't fill, details too small to burn, cut outline) and the designer revises until it passes. Flip between the drafts and pick one. **Refine selection with AI** does the same for shapes already in your project. | Your AI provider |
+| **Agents & skills** | Give the AI roles (designer, critic, assistant) and reusable know-how (a material, a product, your house style). Limit which tools an assistant agent may use. Import and export them as SKILL.md packs, markdown, plain text or JSON, and have the AI draft or improve them for you to review. | Files on your PC |
 | **Remove background** | Whitens everything behind the subject so it isn't burned. AI model for busy backgrounds (a one-off 4.6 MB download of U²-Net, checksum-verified), or an instant plain-background mode. | Your PC, offline |
 | **Photo to line art** | Turns a photo into clean dark lines on white, with detail, strength and shading sliders and a live preview. Line art engraves far crisper than a dithered photo. | Your PC, offline |
 | **Auto-tune** | One click sets brightness, contrast, gamma, invert and dithering for the layer's material – lightening for wood, inverting for slate and anodised aluminium. | Your PC, offline |
 | **GRBL explanations** | Every `ALARM:` and `error:` in the console gets a plain-English meaning and fix underneath. | Your PC, offline |
 
-To use the Claude features, add your own API key from [console.anthropic.com](https://console.anthropic.com/settings/keys) in **AI → AI settings**. It's stored in Windows Credential Manager (never in a file), and usage is billed to your Anthropic account. You can hide all AI features in the same window.
+To use the AI features, pick a provider in **AI → AI settings**: Anthropic Claude, OpenAI, Google Gemini, OpenRouter, any OpenAI-compatible service, or a model running on your own PC through Ollama or LM Studio (no key, and nothing leaves the PC). Keys are stored in Windows Credential Manager (never in a file) and usage is billed to your own account with that provider. Quality varies a lot between models: larger models draw much cleaner vectors than small local ones, and reading a test grid needs a model that can see pictures. You can hide all AI features in the same window.
+
+Whatever the provider, agent or skill, the AI can never frame, start or stop the laser.
 
 ## Features
 
@@ -51,7 +55,9 @@ To use the Claude features, add your own API key from [console.anthropic.com](ht
 |---|---|
 | <img src="docs/screenshots/splash.png" width="420"><br>Start-up: the head engraves the logo | <img src="docs/screenshots/preview.png" width="420"><br>Simulated preview with scrub bar |
 | <img src="docs/screenshots/laser-running.png" width="420"><br>Running a job: glowing head and burn trail | <img src="docs/screenshots/preflight.png" width="420"><br>Pre-flight checks before burning |
-| <img src="docs/screenshots/ai-design.png" width="420"><br>Describe a design: Claude draws it as vectors | <img src="docs/screenshots/assistant.png" width="420"><br>The assistant adding text to the project |
+| <img src="docs/screenshots/ai-design.png" width="420"><br>Describe a design: the AI draws it as vectors | <img src="docs/screenshots/assistant.png" width="420"><br>The assistant adding text to the project |
+| <img src="docs/screenshots/ai-design-review.png" width="420"><br>Drafts reviewed by the critic before you choose | <img src="docs/screenshots/ai-agents.png" width="420"><br>Agents & skills, with a tool allow-list |
+| <img src="docs/screenshots/ai-settings.png" width="420"><br>Choose your AI provider and model | <img src="docs/screenshots/ai-agent-draft.png" width="420"><br>An AI-drafted agent, shown for review before saving |
 | <img src="docs/screenshots/ai-test-grid.png" width="420"><br>Reading a test grid photo | <img src="docs/screenshots/ai-line-art.png" width="420"><br>Photo to line art, on your PC |
 
 ## Project layout
@@ -72,7 +78,7 @@ AsdLasercraft.sln
 ├─ src/AsdLasercraft.App       WPF front end (Windows only)
 │   ├─ Themes                     Dark theme and line icons
 │   ├─ Controls                   DesignCanvas (work area, rulers, preview), Glyph icon control
-│   ├─ Views / Dialogs            Splash, Ready-to-burn, material library, About, AI settings, design, test grid, line art
+│   ├─ Views / Dialogs            Splash, Ready-to-burn, material library, About, AI settings, design, test grid, line art, agents & skills
 │   ├─ Services                   Laser connection, settings, update check, AI services, key storage, background model, smoke test
 │   └─ MainWindow.*.cs            Main window, split by area (file, edit, layers, laser, preview, tools, AI)
 ├─ tests/AsdLasercraft.Core.Tests    Dependency-free test runner (105 tests) + golden G-code files
@@ -125,7 +131,7 @@ Lasers start fires and cause permanent eye damage. Always wear safety glasses ra
 
 ## Versioning
 
-The version is set once in `Directory.Build.props` (`VersionPrefix`). CI stamps each build with its run number and commit, so **Help → About** shows something like `0.4.0 (build 12, a1b2c3d)`. Generated G-code files record the version in their header. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+The version is set once in `Directory.Build.props` (`VersionPrefix`). CI stamps each build with its run number and commit, so **Help → About** shows something like `0.5.0 (build 12, a1b2c3d)`. Generated G-code files record the version in their header. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Author
 

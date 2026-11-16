@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:AsdLasercraft.App.Controls"
         Style="{StaticResource AppWindow}"
-        Title="Describe a design" Width="980" Height="640" MinWidth="820" MinHeight="560"
+        Title="Describe a design" Width="1000" Height="720" MinWidth="820" MinHeight="560"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
     <Grid>
         <Grid.RowDefinitions>
@@ -19,8 +19,8 @@
                     <c:Glyph Data="{StaticResource I.Sparkle}" Size="24" Foreground="{StaticResource Brush.Accent}" HorizontalAlignment="Center" />
                 </Border>
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Describe it, get vectors" FontSize="18" FontWeight="SemiBold" FontFamily="{StaticResource Font.Display}" />
-                    <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,0" Text="Say what you want to engrave or cut – Claude draws it as editable vector shapes." />
+                    <TextBlock x:Name="HeaderTitle" Text="Describe it, get vectors" FontSize="18" FontWeight="SemiBold" FontFamily="{StaticResource Font.Display}" />
+                    <TextBlock x:Name="HeaderSubtitle" Style="{StaticResource Muted}" Margin="0,2,0,0" Text="Say what you want to engrave or cut – your designer agent draws it as editable vector shapes, and a critic checks it first." />
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -34,10 +34,11 @@
             <!-- brief -->
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="20,16,14,12">
-                    <TextBlock Text="WHAT SHOULD IT LOOK LIKE?" Style="{StaticResource Caption}" Margin="2,0,2,4" />
+                    <TextBlock x:Name="PromptCaption" Text="WHAT SHOULD IT LOOK LIKE?" Style="{StaticResource Caption}" Margin="2,0,2,4" />
                     <TextBox x:Name="PromptBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="110" MaxHeight="200" VerticalContentAlignment="Top" Padding="8,6"
                              TextChanged="PromptBox_TextChanged"
                              ToolTip="Describe the design. Put any exact wording in quotes." />
+                    <StackPanel x:Name="NewDesignPanel">
                     <TextBlock Text="IDEAS" Style="{StaticResource Caption}" Margin="2,10,2,6" />
                     <WrapPanel x:Name="ExamplesPanel" />
 
@@ -62,6 +63,11 @@
                     <RadioButton x:Name="StyleBoth" GroupName="style" Style="{StaticResource OptionRadio}">
                         <TextBlock><Run Text="Engrave + cut out" FontWeight="SemiBold" /><Run Text="  – coasters, tags, ornaments" Foreground="{StaticResource Brush.TextMuted}" /></TextBlock>
                     </RadioButton>
+
+                    </StackPanel>
+
+                    <!-- designer, skills and review options are built in code -->
+                    <StackPanel x:Name="AgentPanel" Margin="0,4,0,0" />
 
                     <Button x:Name="GenerateButton" Style="{StaticResource PrimaryButton}" MinHeight="40" Margin="2,16,2,2" Click="Generate_Click" IsEnabled="False">
                         <c:Glyph x:Name="GenerateGlyph" Data="{StaticResource I.Sparkle}" Text="Create design" Size="16" />
@@ -89,6 +95,7 @@
                     <!-- refine -->
                     <Border x:Name="RefinePanel" Grid.Row="1" Padding="12,10" BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,1,0,0" Visibility="Collapsed">
                         <StackPanel>
+                            <WrapPanel x:Name="DraftsPanel" Margin="0,0,0,4" />
                             <TextBlock x:Name="NotesText" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="2,0,2,8" />
                             <DockPanel>
                                 <Button x:Name="RefineButton" DockPanel.Dock="Right" Click="Refine_Click" ToolTip="Ask for a change to this design">
@@ -104,7 +111,7 @@
 
         <DockPanel Grid.Row="2" Margin="20,0,20,18" LastChildFill="False">
             <TextBlock x:Name="FooterText" DockPanel.Dock="Left" VerticalAlignment="Center" Style="{StaticResource Muted}" FontSize="12"
-                       Text="Only your description is sent to Claude." />
+                       Text="Only your description is sent to the AI provider." />
             <Button x:Name="AddButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" MinWidth="160" IsEnabled="False" Click="Add_Click">
                 <c:Glyph Data="{StaticResource I.Plus}" Text="Add to my design" Size="15" />
             </Button>

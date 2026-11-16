@@ -166,7 +166,7 @@ public partial class TestGridWindow : Window
         if (!_settings.AiPhotoConsent)
         {
             var ok = MessageBox.Show(this,
-                "To read the grid, this photo will be sent to Anthropic's Claude API for analysis. Nothing else is sent.\n\nAllow this? (You can change it later in AI settings.)",
+                $"To read the grid, this photo will be sent to {_ai.ProviderName} for analysis. Nothing else is sent.\n\nAllow this? (You can change it later in AI settings.)",
                 Title, MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (ok != MessageBoxResult.Yes) return;
             _settings.AiPhotoConsent = true;
