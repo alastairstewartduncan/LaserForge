@@ -12,8 +12,8 @@ A Windows design-and-burn app for **GRBL diode lasers** (xTool, Atomstack, Sculp
 
 | Feature | What it does | Where it runs |
 |---|---|---|
-| **Describe a design** (Ctrl+G) | Type what you want – *"a round coaster with mountains and a moon, cut out"* – and Claude draws it as editable vectors. Lettering is outlined with your own installed fonts. Preview it, ask for changes ("make the text bigger"), then add it. Engrave, line-art and engrave-and-cut styles. | Claude (only the description is sent) |
-| **Read a test grid photo** | Burn a material test grid, photograph it, and Claude picks the best cell for your goal (dark engrave, light engrave, photo, or cut-through). Save it as a material preset or put it straight on a layer. The speeds and powers come from the grid itself, so they're exact. | Claude (the photo, when you click Read) |
+| **Describe a design** (Ctrl+G) | Type what you want – *"a round coaster with mountains and a moon, cut out"* – and the AI draws it as editable vectors. Lettering is outlined with your own installed fonts. Preview it, ask for changes ("make the text bigger"), then add it. Engrave, line-art and engrave-and-cut styles. | Claude (only the description is sent) |
+| **Read a test grid photo** | Burn a material test grid, photograph it, and the AI picks the best cell for your goal (dark engrave, light engrave, photo, or cut-through). Save it as a material preset or put it straight on a layer. The speeds and powers come from the grid itself, so they're exact. | Claude (the photo, when you click Read) |
 | **Assistant** (Ctrl+K) | A chat tab that knows your project, machine, presets and console. Ask about settings and materials, get alarms explained, or have it add text and shapes, set layers, apply presets, make arrays and generate artwork. Every change is one undo step; switch "Can edit" off for advice only. **It can never frame, start or stop the laser.** | Claude (messages plus a text summary of the project) |
 | **Review and refine** | A critic agent and built-in checks review each draft (missing wording, shapes that won't fill, details too small to burn, cut outline) and the designer revises until it passes. Flip between the drafts and pick one. **Refine selection with AI** does the same for shapes already in your project. | Your AI provider |
 | **Agents & skills** | Give the AI roles (designer, critic, assistant) and reusable know-how (a material, a product, your house style). Limit which tools an assistant agent may use. Import and export them as SKILL.md packs, markdown, plain text or JSON, and have the AI draft or improve them for you to review. | Files on your PC |
@@ -67,7 +67,7 @@ AsdLasercraft.sln
 ├─ src/AsdLasercraft.Core      Pure .NET 8 engine, no UI or package dependencies
 │   ├─ Geometry             Vec2, Bounds, Polyline, Transform2D, curve/arc flattening
 │   ├─ Model                LaserProject, Layer, VectorShape, ImageShape, ShapeFactory, MachineProfile
-│   ├─ Ai                   Claude client, design generator, test-grid reader, assistant + tools
+│   ├─ Ai                   AI clients (Claude, OpenAI-compatible, Gemini), design generator, checks + refine loop, grid reader, assistant + tools, skills & agents library
 │   ├─ Imaging              Adjust → resample → dither; background removal, line art, auto-tune
 │   ├─ Gcode                GcodeGenerator (line / fill / raster / frame), scan offset, angled fill, kerf/tabs, preflight
 │   ├─ Grbl                 Character-counting streamer, status parser, error/alarm explanations, GrblSimulator
