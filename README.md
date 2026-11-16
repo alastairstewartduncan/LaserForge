@@ -6,7 +6,7 @@ A Windows design-and-burn app for **GRBL diode lasers** (xTool, Atomstack, Sculp
 
 <p align="center"><img src="docs/screenshots/design.png" alt="A·S·D Lasercraft design view" width="900"></p>
 
-> **Status: v0.5.** Optional AI features with your choice of provider (Claude, OpenAI, Gemini, OpenRouter, or a model on your own PC), agents and skills you can import and export, and designs that are reviewed and refined before you see them. The core engine (G-code generation, dithering, GRBL streaming, SVG import, kerf, tracing, AI parsing and tools) is covered by 134 tests including golden G-code files, and CI opens every window of the app on Windows before each build is published. Always test new settings on scrap first.
+> **Status: v0.5.** Optional AI features with your choice of provider (Claude, OpenAI, Gemini, OpenRouter, or a model on your own PC), agents and skills you can import and export, and designs that are reviewed and refined before you see them. The core engine (G-code generation, dithering, GRBL streaming, SVG import, kerf, tracing, AI parsing and tools) is covered by 135 tests including golden G-code files, and CI opens every window of the app on Windows before each build is published. Always test new settings on scrap first.
 
 ## AI features (optional)
 

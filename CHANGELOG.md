@@ -37,7 +37,7 @@ All notable changes to A·S·D Lasercraft (formerly LaserForge). Versions follow
 - `OpenAiCompatibleClient` and `GeminiClient` alongside `ClaudeClient`, behind the same `IAiClient`; provider profiles, a client factory and a model lister. Gemini thought signatures are returned with tool calls; the OpenAI client switches between `max_tokens` and `max_completion_tokens` if a model rejects one.
 - New `AsdLasercraft.Core.Ai.Library` namespace: front-matter parser, library storage, import/export, agent runtime (prompt composition and tool limits) and the AI assist. `DesignChecks`, `DesignRefiner` and `SvgExporter` in `Core.Ai`.
 - Agent and skill text is added after the app's own rules with a note that it cannot override them.
-- 29 new core tests (134 total), all against scripted HTTP and fake clients. The UI smoke test now also opens the provider settings for every provider, a review run, the refine window, Agents & skills (loading every agent) and an AI draft for review.
+- 30 new core tests (135 total), all against scripted HTTP and fake clients. The UI smoke test now also opens the provider settings for every provider, a review run, the refine window, Agents & skills (loading every agent) and an AI draft for review.
 
 ## [0.4.0] – 2026-10-16
 
