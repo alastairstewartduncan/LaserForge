@@ -2,6 +2,12 @@
 
 All notable changes to A·S·D Lasercraft (formerly LaserForge). Versions follow [semantic versioning](https://semver.org).
 
+## [0.5.1] – 2026-11-19
+
+### Fixed – "Describe a design"
+- Busy designs (e.g. an advent calendar with 24 pictures) no longer fail with "The AI didn't send back a design". The AI now has twice the room for a design (16,000 tokens, with a 5-minute network timeout), and is told to keep its drawing compact.
+- If a design is still too big to finish, the window now says so and suggests making it a part at a time. If the AI replies with a question instead of a drawing, its reply is shown instead of a generic error.
+
 ## [0.5.0] – 2026-11-16
 
 ### Added – choose your AI provider and model

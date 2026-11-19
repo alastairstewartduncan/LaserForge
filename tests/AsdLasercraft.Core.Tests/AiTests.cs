@@ -138,6 +138,15 @@ internal static class DesignGeneratorTests
         Assert.True(!gen.HasDesign);
     }
 
+    [Test] static void TruncatedDesignSaysSo()
+    {
+        var cutOff = new AiResponse { Content = { new AiText("An advent tree.\n```svg\n<svg width=\"80mm\" height=\"90mm\"><path d=\"M0 0 L1") }, StopReason = "max_tokens" };
+        var gen = new DesignGenerator(new FakeAiClient(_ => cutOff));
+        try { gen.GenerateAsync(new DesignRequest { Description = "x" }).GetAwaiter().GetResult(); throw new Exception("expected"); }
+        catch (AiException ex) { Assert.True(ex.Message.Contains("too big")); }
+        Assert.True(!gen.HasDesign);
+    }
+
     [Test] static void ImporterReadsTextWithTransforms()
     {
         var (paths, texts) = SvgImporter.ImportWithText("""

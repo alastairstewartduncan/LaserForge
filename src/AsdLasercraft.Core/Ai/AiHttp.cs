@@ -8,7 +8,7 @@ namespace AsdLasercraft.Core.Ai;
 /// <summary>Shared HTTP plumbing for the AI clients: sends JSON and turns transport failures into <see cref="AiException"/>s.</summary>
 public static class AiHttp
 {
-    public static HttpClient NewClient() => new() { Timeout = TimeSpan.FromSeconds(180) };
+    public static HttpClient NewClient() => new() { Timeout = TimeSpan.FromSeconds(300) };
 
     /// <summary>Sends the request and returns the status and body text. Network problems become friendly errors.</summary>
     public static async Task<(HttpStatusCode Status, string Body)> SendAsync(HttpClient http, HttpRequestMessage msg, CancellationToken ct)

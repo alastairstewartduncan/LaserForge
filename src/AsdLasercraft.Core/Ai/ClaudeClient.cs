@@ -32,7 +32,7 @@ public sealed class ClaudeClient : IAiClient, IDisposable
     {
         _apiKey = apiKey;
         _ownsHttp = http == null;
-        _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+        _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(300) }; // a 16k-token design can take a few minutes
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey());

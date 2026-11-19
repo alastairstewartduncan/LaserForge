@@ -125,7 +125,7 @@ public sealed class DesignGenerator
             Purpose = "design",
             System = SystemPrompt + Library.AgentRuntime.Section("Design guidance", ExtraInstructions ?? ""),
             Messages = _history.ToList(),
-            MaxTokens = 8000,
+            MaxTokens = MaxDesignTokens,
             Model = string.IsNullOrWhiteSpace(Model) ? null : Model,
         }, ct); // no ConfigureAwait(false): text is outlined with WPF fonts, which want the caller's (UI) thread
 
@@ -133,6 +133,21 @@ public sealed class DesignGenerator
         DesignResult result;
         try
         {
+            if (ExtractSvg(text) == null)
+            {
+                // Say why, rather than a generic "no design": the two usual causes are a reply cut off at the
+                // token limit (a very detailed design) and the model asking a question instead of drawing.
+                if (response.StopReason == "max_tokens")
+                    throw new AiException(AiErrorKind.BadResponse,
+                        "That design was too big for the AI to finish in one go. Try making one part at a time " +
+                        "(e.g. just the outline and lettering), or ask for fewer, simpler pictures.");
+                var said = text.Trim();
+                if (said.Length > 0)
+                {
+                    if (said.Length > 400) said = said[..400].TrimEnd() + "…";
+                    throw new AiException(AiErrorKind.BadResponse, "The AI replied without a design: " + said);
+                }
+            }
             result = Parse(text, request, _outliner);
         }
         catch (AiException)
@@ -144,6 +159,9 @@ public sealed class DesignGenerator
         LastSvg = result.Svg;
         return result;
     }
+
+    /// <summary>Room for a detailed SVG. Was 8000, which busy designs (e.g. 24 pictures) overran, cutting the SVG off mid-way.</summary>
+    public const int MaxDesignTokens = 16000;
 
     // ================================================================== prompt
 
@@ -166,6 +184,9 @@ public sealed class DesignGenerator
         - So draw solid artwork as closed outlines of the solid areas, not as thick strokes.
         - Keep details at least 0.5 mm wide and gaps at least 0.4 mm, keep everything inside the viewBox with a margin of about 2 mm.
         - Prefer clean, bold, high-contrast silhouettes over photographic detail. No shading, hatching only if asked.
+        - Keep the SVG compact: round coordinates to 0.1 mm, no comments, no ids except "cut". If the request has many
+          repeated pictures, keep each one to a few simple paths so the whole SVG fits in a single reply.
+        - Always reply with an SVG, even if the request is ambiguous: make sensible choices and mention them in the opening sentence.
 
         Lettering:
         - Use <text> elements with a real font from the user's installed list, an explicit font-size (in mm) and text-anchor. The app outlines them with that font.
