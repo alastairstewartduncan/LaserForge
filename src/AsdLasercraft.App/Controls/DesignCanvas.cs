@@ -1,8 +1,10 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using AsdLasercraft.App.Services;
 using AsdLasercraft.Core.Imaging;
 using AsdLasercraft.Core.Model;
@@ -16,8 +18,9 @@ namespace AsdLasercraft.App.Controls;
 public enum DesignTool { Select, Rectangle, Ellipse, Line, Pen, Polygon, Text }
 
 /// <summary>
-/// The work area: draws the bed, grid, shapes and images in millimetre space with zoom/pan,
-/// and handles selection, moving, resizing and drawing new shapes.
+/// The work area: draws the bed, rulers, grid, shapes and images in millimetre space with zoom/pan,
+/// handles selection, moving, resizing and drawing new shapes, and shows the simulated preview and the
+/// live laser head (with a glowing burn trail) while a job runs.
 /// </summary>
 public sealed class DesignCanvas : FrameworkElement
 {
@@ -41,9 +44,36 @@ public sealed class DesignCanvas : FrameworkElement
     public bool SnapToGrid { get; set; } = true;
     public double SnapMm { get; set; } = 1.0;
     public int PolygonSides { get; set; } = 6;
+    public bool ShowRulers { get; set; } = true;
 
     /// <summary>Laser head position in project space, shown as a crosshair.</summary>
     public Vec2? LaserPosition { get; set; }
+
+    private bool _laserFiring;
+    /// <summary>True while the laser is burning: the head glows and its path is drawn as a burn trail.</summary>
+    public bool LaserFiring
+    {
+        get => _laserFiring;
+        set
+        {
+            if (_laserFiring == value) return;
+            _laserFiring = value;
+            if (value) _pulseTimer.Start(); else _pulseTimer.Stop();
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>Where the job's anchor point will sit (current-position / user-origin jobs).</summary>
+    public Vec2? JobAnchor { get; set; }
+
+    /// <summary>Simulated preview data, or null when not previewing.</summary>
+    public SimulationData? Simulation { get; set; }
+
+    /// <summary>Preview playhead, seconds into the job.</summary>
+    public double SimulationTime { get; set; }
+
+    /// <summary>Draw laser-off travel moves in the preview.</summary>
+    public bool ShowTravel { get; set; } = true;
 
     private DesignTool _tool;
     public DesignTool Tool
@@ -59,21 +89,40 @@ public sealed class DesignCanvas : FrameworkElement
     public event Action<Vec2>? CursorMoved;
     /// <summary>Raised when the Text tool is clicked; the handler shows a dialog and returns the new shape (or null).</summary>
     public event Func<Vec2, CoreShape?>? TextRequested;
+    /// <summary>Raised when image/SVG/project files are dropped on the canvas, with the drop point in mm.</summary>
+    public event Action<string[], Vec2>? FilesDropped;
 
     // ------------------------------------------------------------------ view transform
 
+    private const double RulerPx = 22;
     private double _zoom = 2;          // screen px per mm
-    private Vector _pan = new(20, 20); // screen offset of mm (0,0)
+    private Vector _pan = new(40, 40); // screen offset of mm (0,0)
+    private Vec2? _cursorMm;
+    private readonly DispatcherTimer _pulseTimer;
+    private readonly List<Vec2> _trail = new();
+    private Vec2? _lastTrailPoint;
 
     public Point ToScreen(Vec2 p) => new(p.X * _zoom + _pan.X, p.Y * _zoom + _pan.Y);
     public Vec2 ToMm(Point p) => new((p.X - _pan.X) / _zoom, (p.Y - _pan.Y) / _zoom);
+    public double Zoom => _zoom;
 
     public void ZoomToFit()
     {
         if (Project == null || ActualWidth < 10 || ActualHeight < 10) return;
         double w = Project.Machine.BedWidthMm, h = Project.Machine.BedHeightMm;
-        _zoom = Math.Min((ActualWidth - 40) / w, (ActualHeight - 40) / h);
-        _pan = new Vector((ActualWidth - w * _zoom) / 2, (ActualHeight - h * _zoom) / 2);
+        double ruler = ShowRulers ? RulerPx : 0;
+        double availW = ActualWidth - ruler - 48, availH = ActualHeight - ruler - 48;
+        _zoom = Math.Max(0.05, Math.Min(availW / w, availH / h));
+        _pan = new Vector(ruler + (ActualWidth - ruler - w * _zoom) / 2, ruler + (ActualHeight - ruler - h * _zoom) / 2);
+        InvalidateVisual();
+    }
+
+    public void ZoomBy(double factor)
+    {
+        var centre = new Point(ActualWidth / 2, ActualHeight / 2);
+        var before = ToMm(centre);
+        _zoom = Math.Clamp(_zoom * factor, 0.05, 200);
+        _pan += centre - ToScreen(before);
         InvalidateVisual();
     }
 
@@ -81,21 +130,66 @@ public sealed class DesignCanvas : FrameworkElement
     {
         Focusable = true;
         ClipToBounds = true;
+        AllowDrop = true;
         RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
         SizeChanged += (_, e) => { if (e.PreviousSize.Width < 10) ZoomToFit(); };
+        _pulseTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(40) };
+        _pulseTimer.Tick += (_, _) => InvalidateVisual();
     }
 
-    // ------------------------------------------------------------------ rendering
+    /// <summary>Adds the head's latest position to the burn trail (call while a job is running).</summary>
+    public void AddTrailPoint(Vec2 p, bool burning)
+    {
+        if (burning && _lastTrailPoint is { } last)
+        {
+            if (_trail.Count == 0 || _trail[^1] != last) { _trail.Add(new Vec2(double.NaN, double.NaN)); _trail.Add(last); }
+            _trail.Add(p);
+            if (_trail.Count > 40_000) _trail.RemoveRange(0, 10_000);
+        }
+        _lastTrailPoint = p;
+    }
 
-    private static readonly Brush Backdrop = Frozen(new SolidColorBrush(Color.FromRgb(0x2B, 0x2D, 0x31)));
-    private static readonly Brush BedBrush = Brushes.White;
-    private static readonly Pen MinorGrid = FrozenPen(Color.FromRgb(0xEE, 0xEE, 0xEE), 1);
-    private static readonly Pen MajorGrid = FrozenPen(Color.FromRgb(0xD0, 0xD4, 0xDA), 1);
-    private static readonly Pen SelectionPen = FrozenPen(Color.FromRgb(0x00, 0x78, 0xD4), 1, dashed: true);
-    private static readonly Pen DraftPen = FrozenPen(Color.FromRgb(0x00, 0x78, 0xD4), 1.5);
-    private static readonly Pen LaserPen = FrozenPen(Color.FromRgb(0xFF, 0x00, 0x60), 1.5);
+    public void ClearTrail()
+    {
+        _trail.Clear();
+        _lastTrailPoint = null;
+        InvalidateVisual();
+    }
+
+    // ------------------------------------------------------------------ palette
+
+    private static readonly Brush Backdrop = Frozen(new SolidColorBrush(Color.FromRgb(0x0E, 0x10, 0x14)));
+    private static readonly Brush BedBrush = Frozen(new LinearGradientBrush(Color.FromRgb(0x1D, 0x21, 0x29), Color.FromRgb(0x18, 0x1B, 0x22), 90));
+    private static readonly Pen BedEdge = FrozenPen(Color.FromRgb(0x39, 0x41, 0x50), 1);
+    private static readonly Pen MinorGrid = FrozenPen(Color.FromArgb(0x5A, 0x2B, 0x31, 0x3D), 1);
+    private static readonly Pen MajorGrid = FrozenPen(Color.FromRgb(0x2E, 0x34, 0x41), 1);
+    private static readonly Color Accent = Color.FromRgb(0xFF, 0x7A, 0x1A);
+    private static readonly Pen SelectionPen = FrozenPen(Accent, 1, dashed: true);
+    private static readonly Pen DraftPen = FrozenPen(Accent, 1.5);
+    private static readonly Brush HandleFill = Frozen(new SolidColorBrush(Color.FromRgb(0x14, 0x17, 0x1C)));
+    private static readonly Pen LaserPen = FrozenPen(Color.FromRgb(0xFF, 0x4D, 0x5E), 1.5);
+    private static readonly Pen AnchorPen = FrozenPen(Color.FromRgb(0x4C, 0xB5, 0xFF), 1.5);
+    private static readonly Brush AnchorFill = Frozen(new SolidColorBrush(Color.FromArgb(0x40, 0x4C, 0xB5, 0xFF)));
+    private static readonly Brush RulerBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x14, 0x17, 0x1C)));
+    private static readonly Pen RulerEdge = FrozenPen(Color.FromRgb(0x28, 0x2D, 0x37), 1);
+    private static readonly Pen RulerTick = FrozenPen(Color.FromRgb(0x4A, 0x52, 0x62), 1);
+    private static readonly Pen RulerCursor = FrozenPen(Accent, 1);
+    private static readonly Brush RulerText = Frozen(new SolidColorBrush(Color.FromRgb(0x7A, 0x83, 0x96)));
+    private static readonly Brush TextMuted = Frozen(new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xB5)));
+    private static readonly Brush TextDim = Frozen(new SolidColorBrush(Color.FromRgb(0x64, 0x6C, 0x7E)));
+    private static readonly Brush TextBright = Frozen(new SolidColorBrush(Color.FromRgb(0xE8, 0xEB, 0xF1)));
+    private static readonly Brush[] BurnBrushes = Enumerable.Range(0, SimulationData.PowerBuckets)
+        .Select(i => (Brush)Frozen(new SolidColorBrush(Color.FromArgb((byte)(70 + 185 * (i + 1) / SimulationData.PowerBuckets), 0xFF, 0x9A, 0x3D))))
+        .ToArray();
+    private static readonly Brush TravelBrush = Frozen(new SolidColorBrush(Color.FromArgb(0x70, 0x4C, 0xB5, 0xFF)));
+    private static readonly Brush TrailBrush = Frozen(new SolidColorBrush(Color.FromArgb(0xD0, 0xFF, 0x8A, 0x2A)));
+    private static readonly Typeface UiFace = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+    private static readonly Typeface UiFaceBold = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+
     private readonly Dictionary<string, (Pen Pen, Brush Fill)> _layerPaint = new();
     private readonly Dictionary<Guid, (string Key, BitmapSource Bmp)> _imageCache = new();
+
+    // ------------------------------------------------------------------ rendering
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -105,20 +199,25 @@ public sealed class DesignCanvas : FrameworkElement
 
         // Bed and grid
         var bed = new Rect(ToScreen(Vec2.Zero), ToScreen(new Vec2(m.BedWidthMm, m.BedHeightMm)));
-        dc.DrawRectangle(BedBrush, null, bed);
-        double step = _zoom >= 4 ? 5 : 10;
+        dc.DrawRoundedRectangle(BedBrush, BedEdge, bed, 3, 3);
+        double step = GridStep();
+        double major = step * 5;
+        dc.PushClip(new RectangleGeometry(bed));
         for (double x = 0; x <= m.BedWidthMm + 1e-9; x += step)
         {
-            var pen = Math.Abs(x % 50) < 1e-9 ? MajorGrid : MinorGrid;
-            dc.DrawLine(pen, ToScreen(new Vec2(x, 0)), ToScreen(new Vec2(x, m.BedHeightMm)));
+            var pen = IsMultiple(x, major) ? MajorGrid : MinorGrid;
+            dc.DrawLine(pen, Snap(ToScreen(new Vec2(x, 0))), Snap(ToScreen(new Vec2(x, m.BedHeightMm))));
         }
         for (double y = 0; y <= m.BedHeightMm + 1e-9; y += step)
         {
-            var pen = Math.Abs(y % 50) < 1e-9 ? MajorGrid : MinorGrid;
-            dc.DrawLine(pen, ToScreen(new Vec2(0, y)), ToScreen(new Vec2(m.BedWidthMm, y)));
+            var pen = IsMultiple(y, major) ? MajorGrid : MinorGrid;
+            dc.DrawLine(pen, Snap(ToScreen(new Vec2(0, y))), Snap(ToScreen(new Vec2(m.BedWidthMm, y))));
         }
+        dc.Pop();
 
-        // Shapes, layer by layer (later layers on top)
+        bool simulating = Simulation != null;
+        // Shapes, layer by layer (later layers on top). Dimmed while previewing so the burn stands out.
+        if (simulating) dc.PushOpacity(0.28);
         foreach (var layer in Project.Layers.Where(l => l.Visible))
         {
             var (pen, fill) = Paint(layer.ColorHex);
@@ -129,8 +228,9 @@ public sealed class DesignCanvas : FrameworkElement
                     case ImageShape img:
                         var bmp = ImageBitmap(img, layer);
                         var b = img.GetBounds();
-                        dc.DrawImage(bmp, new Rect(ToScreen(new Vec2(b.MinX, b.MinY)), ToScreen(new Vec2(b.MaxX, b.MaxY))));
-                        dc.DrawRectangle(null, pen, new Rect(ToScreen(new Vec2(b.MinX, b.MinY)), ToScreen(new Vec2(b.MaxX, b.MaxY))));
+                        var r = new Rect(ToScreen(new Vec2(b.MinX, b.MinY)), ToScreen(new Vec2(b.MaxX, b.MaxY)));
+                        dc.DrawImage(bmp, r);
+                        dc.DrawRectangle(null, pen, r);
                         break;
                     case VectorShape v:
                         dc.DrawGeometry(layer.Mode == LayerMode.Fill ? fill : null, pen, BuildGeometry(v));
@@ -138,28 +238,237 @@ public sealed class DesignCanvas : FrameworkElement
                 }
             }
         }
+        if (simulating) dc.Pop();
+
+        if (simulating) DrawSimulation(dc);
+        else
+        {
+            DrawTrail(dc);
+            if (Project.Shapes.Count == 0) DrawEmptyState(dc, bed);
+        }
 
         // Selection box + resize handles
         var sel = SelectionBounds();
-        if (!sel.IsEmpty)
+        if (!sel.IsEmpty && !simulating)
         {
             var r = new Rect(ToScreen(new Vec2(sel.MinX, sel.MinY)), ToScreen(new Vec2(sel.MaxX, sel.MaxY)));
             r.Inflate(3, 3);
             dc.DrawRectangle(null, SelectionPen, r);
             foreach (var h in HandlePoints(sel))
-                dc.DrawRectangle(Brushes.White, DraftPen, new Rect(ToScreen(h).X - HandlePx, ToScreen(h).Y - HandlePx, HandlePx * 2, HandlePx * 2));
+            {
+                var hp = ToScreen(h);
+                dc.DrawRoundedRectangle(HandleFill, DraftPen, new Rect(hp.X - HandlePx, hp.Y - HandlePx, HandlePx * 2, HandlePx * 2), 2, 2);
+            }
+            var size = Label($"{sel.Width:0.#} × {sel.Height:0.#} mm", 11, TextMuted);
+            dc.DrawText(size, new Point(r.X + (r.Width - size.Width) / 2, r.Bottom + 6));
         }
 
         DrawDraft(dc);
+        if (JobAnchor is { } anchor && !simulating) DrawAnchor(dc, ToScreen(anchor));
+        if (LaserPosition is { } lp && !simulating) DrawHead(dc, ToScreen(lp), LaserFiring);
+        if (ShowRulers) DrawRulers(dc);
+    }
 
-        if (LaserPosition is { } lp)
+    private double GridStep()
+    {
+        // Pick a grid spacing that stays roughly 8–40 px apart on screen.
+        foreach (var s in new[] { 1.0, 2, 5, 10, 20, 50, 100 })
+            if (s * _zoom >= 8) return s;
+        return 200;
+    }
+
+    private static bool IsMultiple(double v, double step) => Math.Abs(Math.IEEERemainder(v, step)) < 1e-6;
+
+    private static Point Snap(Point p) => new(Math.Round(p.X) + 0.5, Math.Round(p.Y) + 0.5);
+
+    private void DrawEmptyState(DrawingContext dc, Rect bed)
+    {
+        if (bed.Width < 260 || bed.Height < 160) return;
+        var c = new Point(bed.X + bed.Width / 2, bed.Y + bed.Height / 2);
+        var ring = new Pen(new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0x7A, 0x1A)), 1.5) { DashStyle = new DashStyle(new double[] { 3, 3 }, 0) };
+        dc.DrawEllipse(new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0x7A, 0x1A)), ring, new Point(c.X, c.Y - 46), 26, 26);
+        // a tiny laser-head glyph
+        var g = Geometry.Parse("M-8,-10 H8 V-2 H-8 Z M-3,-2 L0,4 L3,-2 M0,4 V12");
+        dc.PushTransform(new TranslateTransform(c.X, c.Y - 48));
+        dc.DrawGeometry(null, new Pen(new SolidColorBrush(Accent), 1.6) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }, g);
+        dc.Pop();
+        var title = Label("Start a design", 17, TextBright, bold: true);
+        dc.DrawText(title, new Point(c.X - title.Width / 2, c.Y - 6));
+        var line1 = Label("Draw with the tools on the left, or drop an image, SVG or project here.", 12.5, TextMuted);
+        dc.DrawText(line1, new Point(c.X - line1.Width / 2, c.Y + 22));
+        var line2 = Label("Ctrl+I import image  ·  T text  ·  R rectangle  ·  Tools → Material test grid", 11.5, TextDim);
+        dc.DrawText(line2, new Point(c.X - line2.Width / 2, c.Y + 44));
+    }
+
+    private void DrawSimulation(DrawingContext dc)
+    {
+        var sim = Simulation!;
+        double t = Math.Clamp(SimulationTime, 0, sim.TotalSeconds);
+        dc.PushTransform(new MatrixTransform(_zoom, 0, 0, _zoom, _pan.X, _pan.Y));
+        double burnW = Math.Max(sim.BurnWidthMm, 1.1 / _zoom);
+        var burnPens = BurnBrushes.Select(b => new Pen(b, burnW) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }).ToArray();
+        var travelPen = new Pen(TravelBrush, 0.8 / _zoom) { DashStyle = new DashStyle(new double[] { 4, 4 }, 0) };
+
+        int current = sim.MoveAt(t);
+        foreach (var batch in sim.Batches)
         {
-            var c = ToScreen(lp);
-            dc.DrawLine(LaserPen, new Point(c.X - 10, c.Y), new Point(c.X + 10, c.Y));
-            dc.DrawLine(LaserPen, new Point(c.X, c.Y - 10), new Point(c.X, c.Y + 10));
-            dc.DrawEllipse(null, LaserPen, c, 4, 4);
+            if (batch.Start > current) break;
+            if (batch.End - 1 < current && batch.EndSeconds <= t)
+            {
+                // Finished batch: cached geometry.
+                sim.EnsureGeometry(batch);
+                if (ShowTravel && batch.Travel != null) dc.DrawGeometry(null, travelPen, batch.Travel);
+                for (int k = 0; k < SimulationData.PowerBuckets; k++)
+                    if (batch.Burns![k] is { } g) dc.DrawGeometry(null, burnPens[k], g);
+                continue;
+            }
+            // Batch in progress: move by move up to the playhead.
+            for (int i = batch.Start; i < batch.End && i <= current; i++)
+            {
+                var mv = sim.Moves[i];
+                var to = mv.To;
+                if (i == current)
+                {
+                    double span = mv.EndSeconds - mv.StartSeconds;
+                    double f = span > 1e-12 ? Math.Clamp((t - mv.StartSeconds) / span, 0, 1) : 1;
+                    to = Vec2.Lerp(mv.From, mv.To, f);
+                }
+                if (sim.IsOverlaid(mv)) continue;
+                if (mv.PowerFraction > 0) dc.DrawLine(burnPens[SimulationData.Bucket(mv.PowerFraction)], SimulationData.P(mv.From), SimulationData.P(to));
+                else if (mv.Rapid && ShowTravel) dc.DrawLine(travelPen, SimulationData.P(mv.From), SimulationData.P(to));
+            }
+        }
+
+        // Images: reveal the real burn bitmap down to the row the head is on.
+        foreach (var r in sim.Rasters)
+        {
+            if (current < r.FirstMove) continue;
+            var rect = r.RectMm;
+            if (current < r.LastMove)
+            {
+                double headY = sim.Moves[current].From.Y;
+                double h = Math.Clamp(headY - rect.Y, 0, rect.Height);
+                if (h <= 0) continue;
+                dc.PushClip(new RectangleGeometry(new Rect(rect.X, rect.Y, rect.Width, h)));
+                dc.DrawImage(r.Bitmap, rect);
+                dc.Pop();
+            }
+            else dc.DrawImage(r.Bitmap, rect);
+        }
+        dc.Pop();
+
+        if (sim.HeadAt(t) is { } head)
+        {
+            bool firing = current >= 0 && current < sim.Moves.Count && sim.Moves[current].PowerFraction > 0 && t < sim.TotalSeconds;
+            DrawHead(dc, ToScreen(head), firing);
         }
     }
+
+    private void DrawTrail(DrawingContext dc)
+    {
+        if (_trail.Count < 2) return;
+        var g = new StreamGeometry();
+        using (var ctx = g.Open())
+        {
+            bool started = false;
+            foreach (var p in _trail)
+            {
+                if (double.IsNaN(p.X)) { started = false; continue; }
+                var s = ToScreen(p);
+                if (!started) { ctx.BeginFigure(s, false, false); started = true; }
+                else ctx.LineTo(s, true, false);
+            }
+        }
+        g.Freeze();
+        var glow = new Pen(new SolidColorBrush(Color.FromArgb(0x38, 0xFF, 0x7A, 0x1A)), 6) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        dc.DrawGeometry(null, glow, g);
+        dc.DrawGeometry(null, new Pen(TrailBrush, Math.Max(1.2, 0.1 * _zoom)) { LineJoin = PenLineJoin.Round }, g);
+    }
+
+    private void DrawHead(DrawingContext dc, Point c, bool firing)
+    {
+        if (firing)
+        {
+            double pulse = 0.5 + 0.5 * Math.Sin(Environment.TickCount64 / 70.0);
+            double r = 12 + 5 * pulse;
+            var halo = new RadialGradientBrush(
+                new GradientStopCollection
+                {
+                    new GradientStop(Color.FromArgb(0xFF, 0xFF, 0xF2, 0xE0), 0),
+                    new GradientStop(Color.FromArgb(0xE0, 0xFF, 0xA0, 0x50), 0.2),
+                    new GradientStop(Color.FromArgb(0x70, 0xFF, 0x7A, 0x1A), 0.5),
+                    new GradientStop(Color.FromArgb(0x00, 0xFF, 0x7A, 0x1A), 1),
+                });
+            dc.DrawEllipse(halo, null, c, r, r);
+        }
+        var pen = firing ? DraftPen : LaserPen;
+        dc.DrawLine(pen, new Point(c.X - 14, c.Y), new Point(c.X - 5, c.Y));
+        dc.DrawLine(pen, new Point(c.X + 5, c.Y), new Point(c.X + 14, c.Y));
+        dc.DrawLine(pen, new Point(c.X, c.Y - 14), new Point(c.X, c.Y - 5));
+        dc.DrawLine(pen, new Point(c.X, c.Y + 5), new Point(c.X, c.Y + 14));
+        dc.DrawEllipse(null, pen, c, 5, 5);
+    }
+
+    private void DrawAnchor(DrawingContext dc, Point c)
+    {
+        dc.DrawEllipse(AnchorFill, AnchorPen, c, 7, 7);
+        dc.DrawLine(AnchorPen, new Point(c.X - 12, c.Y), new Point(c.X + 12, c.Y));
+        dc.DrawLine(AnchorPen, new Point(c.X, c.Y - 12), new Point(c.X, c.Y + 12));
+        var label = Label("job start", 10.5, new SolidColorBrush(Color.FromRgb(0x4C, 0xB5, 0xFF)));
+        dc.DrawText(label, new Point(c.X + 10, c.Y + 6));
+    }
+
+    private void DrawRulers(DrawingContext dc)
+    {
+        double w = ActualWidth, h = ActualHeight;
+        dc.DrawRectangle(RulerBrush, null, new Rect(0, 0, w, RulerPx));
+        dc.DrawRectangle(RulerBrush, null, new Rect(0, 0, RulerPx, h));
+        dc.DrawLine(RulerEdge, new Point(0, RulerPx - 0.5), new Point(w, RulerPx - 0.5));
+        dc.DrawLine(RulerEdge, new Point(RulerPx - 0.5, 0), new Point(RulerPx - 0.5, h));
+
+        // Label spacing: at least ~60 px between numbers.
+        double major = new[] { 1.0, 2, 5, 10, 20, 50, 100, 200, 500 }.FirstOrDefault(s => s * _zoom >= 60, 1000);
+        double minor = major / 5;
+
+        var tl = ToMm(new Point(RulerPx, RulerPx));
+        var br = ToMm(new Point(w, h));
+        dc.PushClip(new RectangleGeometry(new Rect(RulerPx, 0, Math.Max(0, w - RulerPx), RulerPx)));
+        for (double x = Math.Floor(tl.X / minor) * minor; x <= br.X; x += minor)
+        {
+            double sx = Math.Round(ToScreen(new Vec2(x, 0)).X) + 0.5;
+            bool isMajor = IsMultiple(x, major);
+            dc.DrawLine(RulerTick, new Point(sx, RulerPx - (isMajor ? 9 : 4)), new Point(sx, RulerPx));
+            if (isMajor)
+                dc.DrawText(Label(x.ToString("0.#", CultureInfo.CurrentCulture), 10, RulerText), new Point(sx + 3, 2));
+        }
+        if (_cursorMm is { } cx) { double sx = ToScreen(cx).X; dc.DrawLine(RulerCursor, new Point(sx, 0), new Point(sx, RulerPx)); }
+        dc.Pop();
+
+        dc.PushClip(new RectangleGeometry(new Rect(0, RulerPx, RulerPx, Math.Max(0, h - RulerPx))));
+        for (double y = Math.Floor(tl.Y / minor) * minor; y <= br.Y; y += minor)
+        {
+            double sy = Math.Round(ToScreen(new Vec2(0, y)).Y) + 0.5;
+            bool isMajor = IsMultiple(y, major);
+            dc.DrawLine(RulerTick, new Point(RulerPx - (isMajor ? 9 : 4), sy), new Point(RulerPx, sy));
+            if (isMajor)
+            {
+                var text = Label(y.ToString("0.#", CultureInfo.CurrentCulture), 10, RulerText);
+                dc.PushTransform(new RotateTransform(-90, 2, sy - 3));
+                dc.DrawText(text, new Point(2 - text.Width, sy - 3));
+                dc.Pop();
+            }
+        }
+        if (_cursorMm is { } cy) { double sy = ToScreen(cy).Y; dc.DrawLine(RulerCursor, new Point(0, sy), new Point(RulerPx, sy)); }
+        dc.Pop();
+
+        dc.DrawRectangle(RulerBrush, null, new Rect(0, 0, RulerPx, RulerPx));
+        var mmLabel = Label("mm", 9, TextDim);
+        dc.DrawText(mmLabel, new Point((RulerPx - mmLabel.Width) / 2, (RulerPx - mmLabel.Height) / 2));
+    }
+
+    private FormattedText Label(string text, double size, Brush brush, bool bold = false) =>
+        new(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, bold ? UiFaceBold : UiFace, size, brush,
+            VisualTreeHelper.GetDpi(this).PixelsPerDip);
 
     private StreamGeometry BuildGeometry(VectorShape v)
     {
@@ -204,9 +513,9 @@ public sealed class DesignCanvas : FrameworkElement
     {
         if (_layerPaint.TryGetValue(hex, out var p)) return p;
         Color c;
-        try { c = (Color)ColorConverter.ConvertFromString(hex); } catch { c = Colors.Black; }
-        var pen = FrozenPen(c, 1.3);
-        var fill = Frozen(new SolidColorBrush(Color.FromArgb(0x40, c.R, c.G, c.B)));
+        try { c = (Color)ColorConverter.ConvertFromString(hex); } catch { c = Colors.White; }
+        var pen = FrozenPen(c, 1.4);
+        var fill = Frozen(new SolidColorBrush(Color.FromArgb(0x38, c.R, c.G, c.B)));
         _layerPaint[hex] = (pen, fill);
         return (pen, fill);
     }
@@ -226,7 +535,7 @@ public sealed class DesignCanvas : FrameworkElement
         InvalidateVisual();
     }
 
-    private const double HandlePx = 4;
+    private const double HandlePx = 4.5;
 
     private static Vec2[] HandlePoints(Bounds b) => new[]
     {
@@ -246,6 +555,21 @@ public sealed class DesignCanvas : FrameworkElement
         return null;
     }
 
+    // ------------------------------------------------------------------ drag and drop
+
+    protected override void OnDragOver(DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    protected override void OnDrop(DragEventArgs e)
+    {
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
+            FilesDropped?.Invoke(files, ToMm(e.GetPosition(this)));
+        e.Handled = true;
+    }
+
     // ------------------------------------------------------------------ mouse interaction
 
     private enum Drag { None, Pan, Move, Resize, Rubber, Draw }
@@ -263,11 +587,17 @@ public sealed class DesignCanvas : FrameworkElement
     {
         var pos = e.GetPosition(this);
         var before = ToMm(pos);
-        _zoom = Math.Clamp(_zoom * (e.Delta > 0 ? 1.15 : 1 / 1.15), 0.2, 200);
+        _zoom = Math.Clamp(_zoom * (e.Delta > 0 ? 1.15 : 1 / 1.15), 0.05, 200);
         var after = ToScreen(before);
         _pan += pos - after;
         InvalidateVisual();
         e.Handled = true;
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        _cursorMm = null;
+        InvalidateVisual();
     }
 
     protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -281,10 +611,11 @@ public sealed class DesignCanvas : FrameworkElement
         if (e.ChangedButton == MouseButton.Middle || (e.ChangedButton == MouseButton.Left && Keyboard.IsKeyDown(Key.Space)))
         {
             _drag = Drag.Pan;
+            Cursor = Cursors.SizeAll;
             CaptureMouse();
             return;
         }
-        if (e.ChangedButton != MouseButton.Left) return;
+        if (e.ChangedButton != MouseButton.Left || Simulation != null) return;
 
         switch (Tool)
         {
@@ -317,7 +648,7 @@ public sealed class DesignCanvas : FrameworkElement
             for (int i = 0; i < handles.Length; i++)
             {
                 var hp = ToScreen(handles[i]);
-                if (Math.Abs(hp.X - screen.X) <= HandlePx + 2 && Math.Abs(hp.Y - screen.Y) <= HandlePx + 2)
+                if (Math.Abs(hp.X - screen.X) <= HandlePx + 3 && Math.Abs(hp.Y - screen.Y) <= HandlePx + 3)
                 {
                     _anchor = handles[(i + 2) % 4]; // opposite corner stays put
                     _drag = Drag.Resize;
@@ -361,6 +692,7 @@ public sealed class DesignCanvas : FrameworkElement
     {
         var pos = e.GetPosition(this);
         var mm = ToMm(pos);
+        _cursorMm = mm;
         CursorMoved?.Invoke(mm);
 
         switch (_drag)
@@ -392,7 +724,6 @@ public sealed class DesignCanvas : FrameworkElement
                 break;
             default:
                 if (Tool == DesignTool.Pen && _penPoints.Count > 0) _dragNowMm = Snap(mm);
-                else return;
                 break;
         }
         _lastScreen = pos;
@@ -427,6 +758,7 @@ public sealed class DesignCanvas : FrameworkElement
         var drag = _drag;
         _drag = Drag.None;
         ReleaseMouseCapture();
+        if (drag == Drag.Pan) Cursor = Tool == DesignTool.Select ? Cursors.Arrow : Cursors.Cross;
 
         switch (drag)
         {
@@ -503,19 +835,25 @@ public sealed class DesignCanvas : FrameworkElement
         InvalidateVisual();
     }
 
-    public void AddShape(CoreShape shape)
+    public void AddShape(CoreShape shape) => AddShapes(new[] { shape });
+
+    /// <summary>Adds shapes to the active layer (steering images and vectors to a suitable layer) and selects them.</summary>
+    public void AddShapes(IReadOnlyList<CoreShape> shapes)
     {
-        if (Project == null) return;
+        if (Project == null || shapes.Count == 0) return;
         BeforeChange?.Invoke();
-        var layer = Project.FindLayer(ActiveLayerId) ?? Project.Layers.FirstOrDefault();
-        if (layer == null) { layer = LaserProject.DefaultLayer(LayerMode.Line); Project.Layers.Add(layer); }
-        // Images need an image layer; vectors on an image layer would be filled, so steer them to the active vector layer.
-        if (shape is ImageShape && layer.Mode != LayerMode.Image) layer = Project.GetOrCreateLayer(LayerMode.Image);
-        if (shape is VectorShape && layer.Mode == LayerMode.Image)
-            layer = Project.Layers.FirstOrDefault(l => l.Mode != LayerMode.Image) ?? Project.GetOrCreateLayer(LayerMode.Line);
-        shape.LayerId = layer.Id;
-        Project.Shapes.Add(shape);
-        SelectOnly(new[] { shape.Id });
+        foreach (var shape in shapes)
+        {
+            var layer = Project.FindLayer(ActiveLayerId) ?? Project.Layers.FirstOrDefault();
+            if (layer == null) { layer = LaserProject.DefaultLayer(LayerMode.Line); Project.Layers.Add(layer); }
+            // Images need an image layer; vectors on an image layer would be filled, so steer them to the active vector layer.
+            if (shape is ImageShape && layer.Mode != LayerMode.Image) layer = Project.GetOrCreateLayer(LayerMode.Image);
+            if (shape is VectorShape && layer.Mode == LayerMode.Image)
+                layer = Project.Layers.FirstOrDefault(l => l.Mode != LayerMode.Image) ?? Project.GetOrCreateLayer(LayerMode.Line);
+            if (shape.LayerId == Guid.Empty || Project.FindLayer(shape.LayerId) == null) shape.LayerId = layer.Id;
+            Project.Shapes.Add(shape);
+        }
+        SelectOnly(shapes.Select(s => s.Id));
         Changed?.Invoke();
     }
 
@@ -530,7 +868,7 @@ public sealed class DesignCanvas : FrameworkElement
     {
         if (_drag == Drag.Rubber)
         {
-            dc.DrawRectangle(Frozen(new SolidColorBrush(Color.FromArgb(0x22, 0x00, 0x78, 0xD4))), SelectionPen,
+            dc.DrawRectangle(Frozen(new SolidColorBrush(Color.FromArgb(0x1E, 0xFF, 0x7A, 0x1A))), SelectionPen,
                              new Rect(ToScreen(_dragStartMm), ToScreen(_dragNowMm)));
         }
         else if (_drag == Drag.Draw)
@@ -546,15 +884,14 @@ public sealed class DesignCanvas : FrameworkElement
                 case DesignTool.Line: dc.DrawLine(DraftPen, ToScreen(_dragStartMm), ToScreen(_dragNowMm)); break;
             }
             var size = _dragNowMm - _dragStartMm;
-            var label = new FormattedText($"{Math.Abs(size.X):0.#} × {Math.Abs(size.Y):0.#} mm", System.Globalization.CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight, new Typeface("Segoe UI"), 11, Brushes.DimGray, VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            dc.DrawText(label, ToScreen(_dragNowMm) + new Vector(8, 8));
+            var label = Label($"{Math.Abs(size.X):0.#} × {Math.Abs(size.Y):0.#} mm", 11, TextMuted);
+            dc.DrawText(label, ToScreen(_dragNowMm) + new Vector(10, 10));
         }
         if (Tool == DesignTool.Pen && _penPoints.Count > 0)
         {
             var pts = _penPoints.Select(ToScreen).Append(ToScreen(_dragNowMm)).ToList();
             for (int i = 1; i < pts.Count; i++) dc.DrawLine(DraftPen, pts[i - 1], pts[i]);
-            dc.DrawEllipse(Brushes.White, DraftPen, pts[0], 4, 4);
+            dc.DrawEllipse(HandleFill, DraftPen, pts[0], 4, 4);
         }
     }
 

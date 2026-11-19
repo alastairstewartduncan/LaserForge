@@ -80,7 +80,8 @@ public static class MaterialTestGenerator
         p.Shapes.Add(shape);
     }
 
-    private static double Step(double min, double max, int i, int steps) =>
+    /// <summary>Value of step <paramref name="i"/> of <paramref name="steps"/> evenly spaced from min to max.</summary>
+    public static double Step(double min, double max, int i, int steps) =>
         steps <= 1 ? min : min + (max - min) * i / (steps - 1);
 
     private static string HueColor(double t)

@@ -12,6 +12,7 @@ public partial class AboutWindow : Window
     {
         InitializeComponent();
         Owner = owner;
+        AsdLasercraft.App.Services.WindowTheme.ApplyDark(this);
 
         VersionText.Text = $"Version {AppInfo.Version}";
         AuthorText.Text = AppInfo.Author;

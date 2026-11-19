@@ -1,0 +1,42 @@
+name: Update golden G-code
+
+# Regenerates tests/AsdLasercraft.Core.Tests/golden/*.gcode and commits them back to the branch.
+# Trigger: push a commit whose message contains [update-golden], or run it by hand from the Actions tab.
+# Only do this after checking that a change to the generated G-code is intended.
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[update-golden]')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Regenerate golden files
+        env:
+          UPDATE_GOLDEN: '1'
+        run: dotnet run --project tests/AsdLasercraft.Core.Tests -c Release
+
+      - name: Commit golden files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/AsdLasercraft.Core.Tests/golden
+          if git diff --cached --quiet; then
+            echo "Golden files unchanged."
+          else
+            git commit -m "Update golden G-code files"
+            git push
+          fi

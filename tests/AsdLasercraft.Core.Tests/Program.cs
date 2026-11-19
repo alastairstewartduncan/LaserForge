@@ -36,11 +36,18 @@ internal static class Program
             {
                 failed++;
                 Console.WriteLine($"  FAIL  {t.DeclaringType!.Name}.{t.Name}: {ex.InnerException?.Message}");
+                // On GitHub Actions, also raise an annotation so failures show on the run summary.
+                if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+                    Console.WriteLine($"::error title=Test failed: {t.DeclaringType!.Name}.{t.Name}::{Escape(ex.InnerException?.Message ?? "")}");
             }
         }
         Console.WriteLine($"\n{passed} passed, {failed} failed");
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+            Console.WriteLine($"::notice title=Core tests::{passed} passed, {failed} failed");
         return failed == 0 ? 0 : 1;
     }
+
+    private static string Escape(string s) => s.Replace("%", "%25").Replace("\r", "%0D").Replace("\n", "%0A");
 }
 
 internal static class Assert

@@ -39,24 +39,12 @@ public sealed record GrblStatus(string State, Vec2? MachinePos, Vec2? WorkPos, d
 
 public static class GrblErrors
 {
-    private static readonly Dictionary<int, string> Errors = new()
-    {
-        [1] = "G-code word missing letter",
-        [2] = "Bad number format",
-        [3] = "Invalid $ statement",
-        [9] = "Locked by alarm or jog state – unlock with $X or home with $H",
-        [15] = "Travel exceeds machine limits (soft limits)",
-        [20] = "Unsupported G-code command",
-        [22] = "Feed rate not set",
-        [24] = "Two G-code commands that need axis words in one block",
-        [33] = "Invalid target for arc",
-    };
-
+    /// <summary>"error:9" → "error:9 – Commands are locked while in alarm or jogging." (full fixes: <see cref="GrblCodes"/>).</summary>
     public static string Describe(string response)
     {
         int colon = response.IndexOf(':');
         if (colon >= 0 && int.TryParse(response[(colon + 1)..], out int code))
-            return Errors.TryGetValue(code, out var text) ? $"error:{code} – {text}" : $"error:{code}";
+            return GrblCodes.Errors.TryGetValue(code, out var info) ? $"error:{code} – {info.Meaning.TrimEnd('.')}" : $"error:{code}";
         return response;
     }
 }

@@ -48,6 +48,27 @@ public sealed class Layer
     /// <summary>Switch air assist on (M8) for this layer.</summary>
     public bool AirAssist { get; set; }
 
+    /// <summary>Fill layers: direction of the scan lines in degrees (0 = horizontal, 45 = diagonal).</summary>
+    public double FillAngleDeg { get; set; }
+
+    /// <summary>Fill layers: burn a second pass at 90° to the first for darker, more even engraving.</summary>
+    public bool CrossHatch { get; set; }
+
+    /// <summary>
+    /// Line layers: width of the cut the beam removes, mm. Closed outlines are offset by half of this
+    /// (outwards for parts, inwards for holes) so the finished piece comes out at the drawn size.
+    /// </summary>
+    public double KerfMm { get; set; }
+
+    /// <summary>Line layers: number of small uncut bridges left in each closed outline so parts don't fall out.</summary>
+    public int TabCount { get; set; }
+
+    /// <summary>Line layers: length of each tab (uncut bridge), mm.</summary>
+    public double TabWidthMm { get; set; } = 1.0;
+
+    /// <summary>Name of the material preset last applied to this layer (display only).</summary>
+    public string? MaterialName { get; set; }
+
     public bool Output { get; set; } = true;
     public bool Visible { get; set; } = true;
 

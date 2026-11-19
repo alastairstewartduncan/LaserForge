@@ -2,9 +2,12 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**']
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -25,10 +28,64 @@ jobs:
       - name: Core tests
         run: dotnet run --project tests/AsdLasercraft.Core.Tests -c Release --no-build
 
+      - name: Upload golden G-code output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-actual-build${{ github.run_number }}
+          path: artifacts/golden-actual/
+          if-no-files-found: ignore
+
       - name: Publish Windows app (self-contained, single file)
         run: dotnet publish src/AsdLasercraft.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:BuildNumber=${{ github.run_number }} -o publish
+
+      # Launches the real app, opens every window, renders screenshots and fails on any XAML/runtime error.
+      - name: UI smoke test
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $out = Join-Path $PWD 'artifacts\screenshots'
+          $p = Start-Process -FilePath 'publish\AsdLasercraft.exe' -ArgumentList '--smoke-test', "`"$out`"" -Wait -PassThru `
+                 -RedirectStandardOutput smoke-out.txt -RedirectStandardError smoke-err.txt
+          Get-Content smoke-out.txt
+          Get-Content smoke-err.txt
+          if ($p.ExitCode -ne 0) { Write-Host "::error title=UI smoke test::exit code $($p.ExitCode)"; exit $p.ExitCode }
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-build${{ github.run_number }}
+          path: artifacts/screenshots/
+          if-no-files-found: ignore
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.VersionPrefix
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc "/DAppVersion=$version" installer\AsdLasercraft.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - uses: actions/upload-artifact@v4
         with:
           name: AsdLasercraft-win-x64-build${{ github.run_number }}
           path: publish/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AsdLasercraft-setup-build${{ github.run_number }}
+          path: artifacts/installer/
+
+      # Push a commit containing [screenshots] to refresh docs/screenshots from this run.
+      - name: Commit screenshots
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[screenshots]')
+        shell: bash
+        run: |
+          mkdir -p docs/screenshots
+          cp artifacts/screenshots/*.png docs/screenshots/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots
+          if git diff --cached --quiet; then echo "Screenshots unchanged."; else git commit -m "Update screenshots" && git push; fi

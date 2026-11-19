@@ -5,10 +5,12 @@ namespace AsdLasercraft.Core.Model;
 /// <summary>A document: layers (with burn settings), the shapes on them and the target machine.</summary>
 public sealed class LaserProject
 {
-    public int FormatVersion { get; set; } = 1;
+    /// <summary>2 = adds job placement, scan offsets, fill angle, kerf and tabs (older files load with defaults).</summary>
+    public int FormatVersion { get; set; } = 2;
     public List<Layer> Layers { get; set; } = new();
     public List<Shape> Shapes { get; set; } = new();
     public MachineProfile Machine { get; set; } = new();
+    public JobSettings Job { get; set; } = new();
 
     public Layer? FindLayer(Guid id) => Layers.FirstOrDefault(l => l.Id == id);
 
@@ -36,9 +38,9 @@ public sealed class LaserProject
 
     public static Layer DefaultLayer(LayerMode mode) => mode switch
     {
-        LayerMode.Fill => new Layer { Name = "Engrave", ColorHex = "#1E5AFF", Mode = LayerMode.Fill, SpeedMmMin = 3000, PowerPercent = 30, LineIntervalMm = 0.1 },
-        LayerMode.Image => new Layer { Name = "Image", ColorHex = "#2EA043", Mode = LayerMode.Image, SpeedMmMin = 3000, PowerPercent = 40, LineIntervalMm = 0.1 },
-        _ => new Layer { Name = "Cut", ColorHex = "#E5341C", Mode = LayerMode.Line, SpeedMmMin = 300, PowerPercent = 100, Passes = 2 },
+        LayerMode.Fill => new Layer { Name = "Engrave", ColorHex = "#4C8DFF", Mode = LayerMode.Fill, SpeedMmMin = 3000, PowerPercent = 30, LineIntervalMm = 0.1 },
+        LayerMode.Image => new Layer { Name = "Image", ColorHex = "#3DDC97", Mode = LayerMode.Image, SpeedMmMin = 3000, PowerPercent = 40, LineIntervalMm = 0.1 },
+        _ => new Layer { Name = "Cut", ColorHex = "#FF4D5E", Mode = LayerMode.Line, SpeedMmMin = 300, PowerPercent = 100, Passes = 2 },
     };
 
     public static LaserProject CreateDefault()
