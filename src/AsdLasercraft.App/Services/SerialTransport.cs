@@ -42,27 +42,34 @@ public sealed class SerialTransport : ILineTransport, IDisposable
         }
     }
 
+    // Windows raises DataReceived on thread-pool threads, so two handlers can run at once. Reading, splitting and
+    // dispatching all happen under one lock so chunks are never stitched together out of order (which garbles an
+    // "ok" and used to make the streamer wait forever) and lines reach the streamer in the order they arrived.
+    private readonly object _readLock = new();
+
     private void OnData(object sender, SerialDataReceivedEventArgs e)
     {
-        string chunk;
-        try { chunk = _port.ReadExisting(); }
-        catch (Exception) { return; }
-
-        List<string>? lines = null;
-        lock (_rx)
+        lock (_readLock)
         {
+            string chunk;
+            try
+            {
+                if (!_port.IsOpen) return;
+                chunk = _port.ReadExisting();
+            }
+            catch (Exception) { return; }
+
             foreach (char c in chunk)
             {
                 if (c == '\n')
                 {
-                    (lines ??= new()).Add(_rx.ToString().TrimEnd('\r'));
+                    var line = _rx.ToString().TrimEnd('\r');
                     _rx.Clear();
+                    LineReceived?.Invoke(line);
                 }
                 else _rx.Append(c);
             }
         }
-        if (lines != null)
-            foreach (var l in lines) LineReceived?.Invoke(l);
     }
 
     public void Dispose()

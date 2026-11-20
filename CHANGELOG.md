@@ -2,6 +2,13 @@
 
 All notable changes to A·S·D Lasercraft (formerly LaserForge). Versions follow [semantic versioning](https://semver.org).
 
+## [0.5.2] – 2026-11-20
+
+### Fixed – jobs stopping part way through
+- Long raster jobs (dithered photos especially) could stop dead part way through: the laser went Idle while the app still showed the job running, at roughly the same point each time. Windows can deliver serial data on two threads at once, and chunks were sometimes joined out of order, garbling an "ok" from the laser. Each lost "ok" left the app thinking the laser's buffer was fuller than it was; after about ten, it stopped sending for good.
+- Serial data is now read and split into lines in strict arrival order.
+- As a safety net, if the laser reports Idle for 1.5 s while the app is still waiting for replies, the app knows those lines were done, counts them, and carries on. The log notes "Recovered N lost acknowledgement(s)". It never does this while the machine is moving or the job is paused.
+
 ## [0.5.1] – 2026-11-19
 
 ### Fixed – "Describe a design"

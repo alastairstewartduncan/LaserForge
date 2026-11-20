@@ -357,6 +357,78 @@ internal static class GrblTests
         Assert.Near(500, st.Spindle, 1e-9);
     }
 
+    [Test] static void LostAcksRecoverWhenControllerGoesIdle()
+    {
+        // A garbled "ok" used to leave its bytes counted as in flight forever: after ~10 of them the
+        // streamer stopped sending while GRBL sat Idle, and the job hung half way (seen on a dithered photo).
+        long now = 0;
+        var port = new FakePort();
+        var s = new GrblStreamer(port, 128) { Clock = () => now };
+        string? log = null;
+        s.MessageReceived += m => log = m;
+        s.Start(Enumerable.Range(0, 400).Select(i => $"X{i}.127 S{(i % 2) * 400}"));
+
+        // Fake GRBL: answers each line it has received exactly once; every 7th answer arrives garbled.
+        // When it has nothing left to answer it is Idle and only answers the 200 ms status poll.
+        int answered = 0;
+        for (int guard = 0; s.State == StreamState.Running && guard < 100_000; guard++)
+        {
+            if (answered < port.LinesSent)
+            {
+                answered++;
+                port.Reply(answered % 7 == 0 ? "ko" : "ok");
+                now += 2;
+            }
+            else
+            {
+                now += 200;
+                port.Reply("<Idle|MPos:0,0,0|FS:0,0>");
+            }
+        }
+        Assert.Equal(StreamState.Completed, s.State);
+        Assert.Equal(400, port.LinesSent);
+        Assert.Equal(400, s.Acknowledged);
+        Assert.True(s.RecoveredAcks > 0, "recovered lost acks");
+        Assert.True(log != null && log.Contains("Recovered"), log ?? "no log");
+    }
+
+    [Test] static void OldBehaviourWouldStallWithoutStatusPolls()
+    {
+        // Same garbling, but no status reports: the streamer must not guess, it just waits (documents the trigger).
+        var port = new FakePort();
+        var s = new GrblStreamer(port, 128);
+        s.Start(Enumerable.Range(0, 400).Select(i => $"X{i}.127 S{(i % 2) * 400}"));
+        int answered = 0;
+        while (answered < port.LinesSent) { answered++; port.Reply(answered % 7 == 0 ? "ko" : "ok"); }
+        Assert.Equal(StreamState.Running, s.State);
+        Assert.True(port.LinesSent < 400, $"stalled at {port.LinesSent}");
+    }
+
+    [Test] static void NoRecoveryWhileMachineIsBusy()
+    {
+        long now = 0;
+        var port = new FakePort();
+        var s = new GrblStreamer(port, 128) { Clock = () => now };
+        s.Start(Enumerable.Range(0, 50).Select(i => $"G1 X{i} F100"));
+        int sent = port.LinesSent;
+        for (int i = 0; i < 20; i++) { now += 1000; port.Reply("<Run|MPos:0,0,0|FS:100,0>"); }
+        Assert.Equal(sent, port.LinesSent);
+        Assert.Equal(0, s.Acknowledged);
+        Assert.Equal(0, s.RecoveredAcks);
+    }
+
+    [Test] static void NoRecoveryWhilePaused()
+    {
+        long now = 0;
+        var port = new FakePort();
+        var s = new GrblStreamer(port, 128) { Clock = () => now };
+        s.Start(Enumerable.Range(0, 50).Select(i => $"G1 X{i} F100"));
+        s.Pause();
+        for (int i = 0; i < 20; i++) { now += 1000; port.Reply("<Idle|MPos:0,0,0|FS:0,0>"); }
+        Assert.Equal(StreamState.Paused, s.State);
+        Assert.Equal(0, s.RecoveredAcks);
+    }
+
     [Test] static void PauseResumeSendRealtime()
     {
         var port = new FakePort();

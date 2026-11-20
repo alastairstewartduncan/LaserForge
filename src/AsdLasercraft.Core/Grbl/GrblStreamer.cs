@@ -28,6 +28,20 @@ public sealed class GrblStreamer
     private IReadOnlyList<string> _lines = Array.Empty<string>();
     private int _nextToSend;
     private int _bytesInFlight;
+    private long _lastActivityMs;   // last time a line was sent or acknowledged
+    private int _idleReports;       // consecutive "Idle" status reports while lines are in flight
+
+    /// <summary>
+    /// If GRBL reports Idle for this long while lines are still counted as in flight, their "ok"s were lost
+    /// (garbled on the serial link) and the stream is resynchronised instead of waiting forever.
+    /// </summary>
+    public int StallRecoveryMs { get; set; } = 1500;
+
+    /// <summary>Millisecond clock; replaceable in tests.</summary>
+    public Func<long> Clock { get; set; } = () => Environment.TickCount64;
+
+    /// <summary>How many lost acknowledgements were recovered during the current job.</summary>
+    public int RecoveredAcks { get; private set; }
 
     public StreamState State { get; private set; } = StreamState.Idle;
     public int TotalLines => _lines.Count;
@@ -63,6 +77,9 @@ public sealed class GrblStreamer
             _inFlight.Clear();
             Acknowledged = 0;
             ErrorCount = 0;
+            RecoveredAcks = 0;
+            _idleReports = 0;
+            _lastActivityMs = Clock();
             SetState(StreamState.Running);
             Pump();
         }
@@ -134,7 +151,16 @@ public sealed class GrblStreamer
 
         if (line.StartsWith('<'))
         {
-            if (GrblStatus.TryParse(line, out var st)) StatusReceived?.Invoke(st);
+            if (GrblStatus.TryParse(line, out var st))
+            {
+                string? recovered = CheckStall(st);
+                StatusReceived?.Invoke(st);
+                if (recovered != null)
+                {
+                    MessageReceived?.Invoke(recovered);
+                    ProgressChanged?.Invoke(Acknowledged, TotalLines);
+                }
+            }
             return;
         }
 
@@ -160,6 +186,8 @@ public sealed class GrblStreamer
         lock (_gate)
         {
             if (_inFlight.Count > 0) _bytesInFlight -= _inFlight.Dequeue();
+            _lastActivityMs = Clock();
+            _idleReports = 0;
             if (IsBusy || State == StreamState.Faulted)
             {
                 int ackIndex = Acknowledged;
@@ -190,6 +218,34 @@ public sealed class GrblStreamer
         if (reportProgress) ProgressChanged?.Invoke(Acknowledged, TotalLines);
     }
 
+    /// <summary>
+    /// Lost-acknowledgement recovery. Character counting stalls for good if any "ok" never arrives: the app keeps
+    /// thinking GRBL's buffer is full while GRBL has finished everything and sits Idle. GRBL only reports Idle when
+    /// its planner is empty and it has nothing left to parse, so after a quiet spell of Idle reports every line
+    /// still counted as in flight has in fact been executed; count them as done and carry on streaming.
+    /// </summary>
+    private string? CheckStall(GrblStatus st)
+    {
+        lock (_gate)
+        {
+            if (State != StreamState.Running || _inFlight.Count == 0) { _idleReports = 0; return null; }
+            if (!string.Equals(st.State, "Idle", StringComparison.OrdinalIgnoreCase)) { _idleReports = 0; return null; }
+            _idleReports++;
+            if (_idleReports < 2 || Clock() - _lastActivityMs < StallRecoveryMs) return null;
+
+            int lost = _inFlight.Count;
+            _inFlight.Clear();
+            _bytesInFlight = 0;
+            Acknowledged = Math.Min(_nextToSend, Acknowledged + lost);
+            RecoveredAcks += lost;
+            _idleReports = 0;
+            _lastActivityMs = Clock();
+            Pump();
+            if (Acknowledged >= _lines.Count) SetState(StreamState.Completed);
+            return $"Recovered {lost} lost acknowledgement(s) from the controller; job continued.";
+        }
+    }
+
     // Caller holds _gate.
     private void Pump()
     {
@@ -204,7 +260,11 @@ public sealed class GrblStreamer
             _bytesInFlight += len;
             _nextToSend++;
         }
-        if (sb.Length > 0) _transport.Write(sb.ToString());
+        if (sb.Length > 0)
+        {
+            _lastActivityMs = Clock();
+            _transport.Write(sb.ToString());
+        }
     }
 
     private void SetState(StreamState s)
