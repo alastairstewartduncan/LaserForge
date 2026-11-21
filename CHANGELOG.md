@@ -2,6 +2,12 @@
 
 All notable changes to A·S·D Lasercraft (formerly LaserForge). Versions follow [semantic versioning](https://semver.org).
 
+## [0.5.3] – 2026-11-21
+
+### Fixed – jobs that still stopped at the same point
+- 0.5.2 didn't cure it, because the stop wasn't lost replies: if the controller restarts mid-job (a USB or power glitch, typically where the laser fires hardest, hence the same spot each time) the app cleared its counters but stayed on "Running" forever, and the lost-reply recovery couldn't kick in.
+- A controller restart, a USB link that goes silent (no reply to status polls for 4 s), or an Alarm during a job now stops the job straight away, with a message in the console saying which line it reached and what to check.
+
 ## [0.5.2] – 2026-11-20
 
 ### Fixed – jobs stopping part way through

@@ -429,6 +429,44 @@ internal static class GrblTests
         Assert.Equal(0, s.RecoveredAcks);
     }
 
+    [Test] static void ControllerResetMidJobStopsTheJob()
+    {
+        // A reset (USB/power glitch) used to clear the in-flight count but leave the job "Running" forever.
+        var port = new FakePort();
+        var s = new GrblStreamer(port, 128);
+        var log = new List<string>();
+        s.MessageReceived += log.Add;
+        s.Start(Enumerable.Range(0, 200).Select(i => $"G1 X{i} S400 F3000"));
+        for (int i = 0; i < 30; i++) port.Reply("ok");
+        port.Reply("Grbl 1.1h ['$' for help]");
+        Assert.Equal(StreamState.Faulted, s.State);
+        Assert.True(log.Any(m => m.Contains("restarted") && m.Contains("line 31")), string.Join(" | ", log));
+    }
+
+    [Test] static void SilentLinkStopsTheJob()
+    {
+        long now = 0;
+        var port = new FakePort();
+        var s = new GrblStreamer(port, 128) { Clock = () => now };
+        var log = new List<string>();
+        s.MessageReceived += log.Add;
+        s.Start(Enumerable.Range(0, 200).Select(i => $"G1 X{i} S400 F3000"));
+        for (int i = 0; i < 10; i++) { now += 200; port.Reply("ok"); s.RequestStatus(); }
+        Assert.Equal(StreamState.Running, s.State);
+        for (int i = 0; i < 25; i++) { now += 200; s.RequestStatus(); } // USB gone: nothing comes back
+        Assert.Equal(StreamState.Faulted, s.State);
+        Assert.True(log.Any(m => m.Contains("No reply")), string.Join(" | ", log));
+    }
+
+    [Test] static void AlarmStatusMidJobStopsTheJob()
+    {
+        var port = new FakePort();
+        var s = new GrblStreamer(port, 128);
+        s.Start(Enumerable.Range(0, 200).Select(i => $"G1 X{i} S400 F3000"));
+        port.Reply("<Alarm|MPos:0,0,0|FS:0,0>");
+        Assert.Equal(StreamState.Faulted, s.State);
+    }
+
     [Test] static void PauseResumeSendRealtime()
     {
         var port = new FakePort();

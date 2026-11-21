@@ -30,12 +30,20 @@ public sealed class GrblStreamer
     private int _bytesInFlight;
     private long _lastActivityMs;   // last time a line was sent or acknowledged
     private int _idleReports;       // consecutive "Idle" status reports while lines are in flight
+    private long _lastRxMs;         // last time anything at all (ok, status report, message) came back
+    private int _pollsUnanswered;   // status polls sent since anything came back
 
     /// <summary>
     /// If GRBL reports Idle for this long while lines are still counted as in flight, their "ok"s were lost
     /// (garbled on the serial link) and the stream is resynchronised instead of waiting forever.
     /// </summary>
     public int StallRecoveryMs { get; set; } = 1500;
+
+    /// <summary>
+    /// If nothing at all (not even a reply to the 200 ms status poll) comes back for this long during a job, the USB
+    /// link has gone (cable, interference, controller browned out) and the job is stopped with an explanation.
+    /// </summary>
+    public int LinkTimeoutMs { get; set; } = 4000;
 
     /// <summary>Millisecond clock; replaceable in tests.</summary>
     public Func<long> Clock { get; set; } = () => Environment.TickCount64;
@@ -80,6 +88,8 @@ public sealed class GrblStreamer
             RecoveredAcks = 0;
             _idleReports = 0;
             _lastActivityMs = Clock();
+            _lastRxMs = _lastActivityMs;
+            _pollsUnanswered = 0;
             SetState(StreamState.Running);
             Pump();
         }
@@ -136,7 +146,32 @@ public sealed class GrblStreamer
         }
     }
 
-    public void RequestStatus() => _transport.Write("?");
+    /// <summary>Sends a status poll ('?'). Also the link watchdog: a job that hears nothing back is stopped, not left hanging.</summary>
+    public void RequestStatus()
+    {
+        string? lost = null;
+        lock (_gate)
+        {
+            // Needs both time and unanswered polls, so a UI hiccup that delayed the polls can't trip it.
+            if (IsBusy && ++_pollsUnanswered >= 10 && Clock() - _lastRxMs > LinkTimeoutMs)
+            {
+                lost = $"No reply from the laser for {LinkTimeoutMs / 1000} s at {Where()}, so the job was stopped. " +
+                       "The USB link dropped or the controller lost power. This usually happens when the laser fires hard: " +
+                       "check the USB cable (short, with a ferrite bead), use a different USB port, and check the power supply.";
+                SetState(StreamState.Faulted);
+            }
+        }
+        if (lost != null) { MessageReceived?.Invoke(lost); return; }
+        _transport.Write("?");
+    }
+
+    // Caller holds _gate. Where the job had got to, for messages.
+    private string Where()
+    {
+        int i = Math.Min(Acknowledged, Math.Max(0, _lines.Count - 1));
+        string near = _lines.Count > 0 ? $" (\"{_lines[i]}\")" : "";
+        return $"line {Acknowledged + 1:N0} of {_lines.Count:N0}{near}";
+    }
 
     /// <summary>Jog (GRBL 1.1 $J). Distances in machine mm, relative.</summary>
     public bool Jog(double dx, double dy, double feed) =>
@@ -148,11 +183,23 @@ public sealed class GrblStreamer
     {
         var line = raw.Trim();
         if (line.Length == 0) return;
+        lock (_gate) { _lastRxMs = Clock(); _pollsUnanswered = 0; }
 
         if (line.StartsWith('<'))
         {
             if (GrblStatus.TryParse(line, out var st))
             {
+                string? alarm = null;
+                lock (_gate)
+                {
+                    if (IsBusy && st.State.StartsWith("Alarm", StringComparison.OrdinalIgnoreCase))
+                    {
+                        alarm = $"The laser went into Alarm at {Where()}, so the job was stopped. Check the console for the alarm number.";
+                        _inFlight.Clear(); _bytesInFlight = 0;
+                        SetState(StreamState.Faulted);
+                    }
+                }
+                if (alarm != null) { StatusReceived?.Invoke(st); MessageReceived?.Invoke(alarm); return; }
                 string? recovered = CheckStall(st);
                 StatusReceived?.Invoke(st);
                 if (recovered != null)
@@ -168,10 +215,26 @@ public sealed class GrblStreamer
         bool isError = line.StartsWith("error:", StringComparison.OrdinalIgnoreCase);
         if (!isOk && !isError)
         {
-            if (line.StartsWith("Grbl ", StringComparison.Ordinal))
+            if (line.StartsWith("Grbl", StringComparison.Ordinal))
             {
-                // Controller was reset: anything in flight is gone.
-                lock (_gate) { _inFlight.Clear(); _bytesInFlight = 0; }
+                // Controller was reset: anything in flight is gone. If a job was running, it can't carry on: the
+                // controller has forgotten its position and modes. Before, the app stayed "Running" here forever.
+                string? reset = null;
+                lock (_gate)
+                {
+                    _inFlight.Clear(); _bytesInFlight = 0;
+                    if (IsBusy)
+                    {
+                        reset = $"The laser controller restarted by itself at {Where()}, so the job was stopped. " +
+                                "That's electrical, not the design: usually the USB link or the controller's power dropping " +
+                                "when the laser fires hard. Try a short USB cable with a ferrite bead, a different USB port, " +
+                                "and check the power supply and its connector.";
+                        SetState(StreamState.Faulted);
+                    }
+                }
+                MessageReceived?.Invoke(line);
+                if (reset != null) MessageReceived?.Invoke(reset);
+                return;
             }
             if (line.StartsWith("ALARM:", StringComparison.Ordinal))
             {
