@@ -467,6 +467,117 @@ internal static class GrblTests
         Assert.Equal(StreamState.Faulted, s.State);
     }
 
+    private sealed class FakeIo : IPortIo
+    {
+        public readonly System.Collections.Concurrent.BlockingCollection<byte[]> Incoming = new();
+        public readonly List<string> Written = new();
+        public readonly ManualResetEventSlim WriteGate = new(true);   // reset it to make writes hang
+        public Exception? WriteError;
+        public int Read(byte[] buffer, int offset, int count)
+        {
+            if (!Incoming.TryTake(out var chunk, 20)) return 0;
+            Array.Copy(chunk, 0, buffer, offset, chunk.Length);
+            return chunk.Length;
+        }
+        public void Write(byte[] data)
+        {
+            if (WriteError != null) throw WriteError;
+            WriteGate.Wait();
+            lock (Written) Written.Add(System.Text.Encoding.Latin1.GetString(data));
+        }
+        public void Send(string s) => Incoming.Add(System.Text.Encoding.Latin1.GetBytes(s));
+    }
+
+    private static bool WaitFor(Func<bool> cond, int ms = 3000)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!cond()) { if (sw.ElapsedMilliseconds > ms) return false; Thread.Sleep(5); }
+        return true;
+    }
+
+    [Test] static void StuckWriteDoesNotBlockReplies()
+    {
+        // 0.5.2 read and wrote under shared locks, so one slow write froze the replies too and the job hung silently.
+        var io = new FakeIo();
+        using var t = new QueuedLineTransport(io);
+        var got = new List<string>();
+        t.LineReceived += l => { lock (got) got.Add(l); };
+        t.Start();
+        io.WriteGate.Reset();                  // the port stops accepting data
+        t.Write("G1 X1\n");                    // must return at once, not block the caller
+        t.Write("G1 X2\n");
+        io.Send("<Idle|MPos:0,0,0>\r\nok\n");
+        Assert.True(WaitFor(() => { lock (got) return got.Count == 2; }), "replies still arrive while a write is stuck");
+        Assert.Equal("ok", got[1]);
+        io.WriteGate.Set();
+        Assert.True(WaitFor(() => { lock (io.Written) return io.Written.Count == 2; }), "queued lines go out once the port accepts data");
+        Assert.Equal("G1 X1\n", io.Written[0]);
+    }
+
+    [Test] static void SplitChunksAreJoinedInOrder()
+    {
+        var io = new FakeIo();
+        using var t = new QueuedLineTransport(io);
+        var got = new List<string>();
+        t.LineReceived += l => { lock (got) got.Add(l); };
+        t.Start();
+        io.Send("o"); io.Send("k\r\nerr"); io.Send("or:2\n<Run|M"); io.Send("Pos:1,2,3>\n");
+        Assert.True(WaitFor(() => { lock (got) return got.Count == 3; }));
+        Assert.Equal("ok", got[0]);
+        Assert.Equal("error:2", got[1]);
+        Assert.Equal("<Run|MPos:1,2,3>", got[2]);
+    }
+
+    [Test] static void RealtimeBytesJumpTheQueue()
+    {
+        var io = new FakeIo();
+        using var t = new QueuedLineTransport(io);
+        io.WriteGate.Reset();
+        t.Start();
+        t.Write("G1 X1\n");
+        Assert.True(WaitFor(() => t.QueuedItems == 0));   // writer has taken the first item and is stuck on it
+        t.Write("G1 X2\n");
+        t.Write("!");
+        t.Write("\x18");
+        io.WriteGate.Set();
+        Assert.True(WaitFor(() => { lock (io.Written) return io.Written.Count == 4; }));
+        Assert.Equal("!", io.Written[1]);
+        Assert.Equal("\x18", io.Written[2]);
+        Assert.Equal("G1 X2\n", io.Written[3]);
+    }
+
+    [Test] static void WriteFailureFaultsTheJob()
+    {
+        var io = new FakeIo { WriteError = new IOException("The device is not connected.") };
+        using var t = new QueuedLineTransport(io);
+        var s = new GrblStreamer(t, 128);
+        string? incident = null;
+        s.Incident += r => incident = r;
+        t.Faulted += m => s.Abort(m);
+        t.Start();
+        s.Start(Enumerable.Range(0, 50).Select(i => $"G1 X{i} S400 F3000"));
+        Assert.True(WaitFor(() => s.State == StreamState.Faulted), "job stops when the port fails");
+        Assert.True(incident != null && incident.Contains("not connected"), incident ?? "no incident");
+    }
+
+    [Test] static void DiagnosticsRecordTraffic()
+    {
+        long now = 0;
+        var port = new FakePort();
+        var s = new GrblStreamer(port, 128) { Clock = () => now };
+        string? incident = null;
+        s.Incident += r => incident = r;
+        s.Start(Enumerable.Range(0, 200).Select(i => $"G1 X{i} S400 F3000"));
+        port.Reply("ok");
+        port.Reply("Grbl 1.1h ['$' for help]");
+        Assert.True(incident != null && incident.Contains("restarted"));
+        var d = s.Diagnostics(incident);
+        Assert.True(d.Contains("> [1] G1 X0 S400 F3000"), d);
+        Assert.True(d.Contains("< ok"), d);
+        Assert.True(d.Contains("< Grbl 1.1h"), d);
+        Assert.True(d.Contains("state Running -> Faulted"), d);
+    }
+
     [Test] static void PauseResumeSendRealtime()
     {
         var port = new FakePort();

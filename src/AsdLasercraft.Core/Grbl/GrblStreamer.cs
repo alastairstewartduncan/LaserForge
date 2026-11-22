@@ -65,6 +65,41 @@ public sealed class GrblStreamer
     public event Action<GrblStatus>? StatusReceived;
     public event Action<string>? MessageReceived;              // everything else: welcome, [MSG:], ALARM:, $ settings…
 
+    /// <summary>
+    /// Raised (outside any lock) when the streamer had to recover or stop a job by itself. The argument says why;
+    /// save <see cref="Diagnostics"/> at that point so a stall can be investigated afterwards.
+    /// </summary>
+    public event Action<string>? Incident;
+
+    // ------------------------------------------------------------------ traffic log for diagnostics
+    private const int TrafficCapacity = 600;
+    private readonly Queue<string> _traffic = new();
+    private string? _lastStatusLogged;
+
+    // Caller holds _gate.
+    private void Trace(char dir, string text)
+    {
+        if (_traffic.Count >= TrafficCapacity) _traffic.Dequeue();
+        _traffic.Enqueue($"{Clock(),12} {dir} {text}");
+    }
+
+    /// <summary>The streamer's counters plus the last few hundred lines sent ('>'), received ('<') and noted ('#').</summary>
+    public string Diagnostics(string? reason = null)
+    {
+        lock (_gate)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"Reason: {reason ?? "(none)"}");
+            sb.AppendLine($"State {State}, acknowledged {Acknowledged:N0}, sent {_nextToSend:N0} of {TotalLines:N0}, " +
+                          $"in flight {_inFlight.Count} lines / {_bytesInFlight} bytes (buffer {_bufferSize}), " +
+                          $"errors {ErrorCount}, recovered acks {RecoveredAcks}");
+            sb.AppendLine($"Clock {Clock()} ms, last ack/send {_lastActivityMs}, last reply {_lastRxMs}, unanswered polls {_pollsUnanswered}");
+            sb.AppendLine("Columns: clock ms, direction (> sent, < received, # note), text. Repeated status reports are skipped.");
+            foreach (var t in _traffic) sb.AppendLine(t);
+            return sb.ToString();
+        }
+    }
+
     public GrblStreamer(ILineTransport transport, int rxBufferSize = 128)
     {
         _transport = transport;
@@ -90,6 +125,7 @@ public sealed class GrblStreamer
             _lastActivityMs = Clock();
             _lastRxMs = _lastActivityMs;
             _pollsUnanswered = 0;
+            Trace('#', $"job start: {_lines.Count:N0} lines");
             SetState(StreamState.Running);
             Pump();
         }
@@ -106,6 +142,7 @@ public sealed class GrblStreamer
             if (clean.Length == 0) return false;
             _inFlight.Enqueue(clean.Length + 1);
             _bytesInFlight += clean.Length + 1;
+            Trace('>', clean);
             _transport.Write(clean + "\n");
             return true;
         }
@@ -147,6 +184,23 @@ public sealed class GrblStreamer
     }
 
     /// <summary>Sends a status poll ('?'). Also the link watchdog: a job that hears nothing back is stopped, not left hanging.</summary>
+    /// <summary>Stops a running job because the link failed (raised by the transport). No-op when nothing runs.</summary>
+    public void Abort(string reason)
+    {
+        string? msg = null;
+        lock (_gate)
+        {
+            Trace('#', "abort: " + reason);
+            if (IsBusy)
+            {
+                msg = $"{reason} The job was stopped at {Where()}.";
+                _inFlight.Clear(); _bytesInFlight = 0;
+                SetState(StreamState.Faulted);
+            }
+        }
+        if (msg != null) { MessageReceived?.Invoke(msg); Incident?.Invoke(msg); }
+    }
+
     public void RequestStatus()
     {
         string? lost = null;
@@ -158,10 +212,11 @@ public sealed class GrblStreamer
                 lost = $"No reply from the laser for {LinkTimeoutMs / 1000} s at {Where()}, so the job was stopped. " +
                        "The USB link dropped or the controller lost power. This usually happens when the laser fires hard: " +
                        "check the USB cable (short, with a ferrite bead), use a different USB port, and check the power supply.";
+                Trace('#', "link watchdog: no reply");
                 SetState(StreamState.Faulted);
             }
         }
-        if (lost != null) { MessageReceived?.Invoke(lost); return; }
+        if (lost != null) { MessageReceived?.Invoke(lost); Incident?.Invoke(lost); return; }
         _transport.Write("?");
     }
 
@@ -183,7 +238,19 @@ public sealed class GrblStreamer
     {
         var line = raw.Trim();
         if (line.Length == 0) return;
-        lock (_gate) { _lastRxMs = Clock(); _pollsUnanswered = 0; }
+        lock (_gate)
+        {
+            _lastRxMs = Clock();
+            _pollsUnanswered = 0;
+            if (!line.StartsWith('<')) Trace('<', line);
+            else
+            {
+                // Status reports arrive 5 times a second; log only when the state word changes.
+                int bar = line.IndexOf('|');
+                string word = bar > 0 ? line[..bar] : line;
+                if (word != _lastStatusLogged) { Trace('<', line); _lastStatusLogged = word; }
+            }
+        }
 
         if (line.StartsWith('<'))
         {
@@ -195,16 +262,18 @@ public sealed class GrblStreamer
                     if (IsBusy && st.State.StartsWith("Alarm", StringComparison.OrdinalIgnoreCase))
                     {
                         alarm = $"The laser went into Alarm at {Where()}, so the job was stopped. Check the console for the alarm number.";
+                        Trace('#', "alarm status during job");
                         _inFlight.Clear(); _bytesInFlight = 0;
                         SetState(StreamState.Faulted);
                     }
                 }
-                if (alarm != null) { StatusReceived?.Invoke(st); MessageReceived?.Invoke(alarm); return; }
+                if (alarm != null) { StatusReceived?.Invoke(st); MessageReceived?.Invoke(alarm); Incident?.Invoke(alarm); return; }
                 string? recovered = CheckStall(st);
                 StatusReceived?.Invoke(st);
                 if (recovered != null)
                 {
                     MessageReceived?.Invoke(recovered);
+                    Incident?.Invoke(recovered);
                     ProgressChanged?.Invoke(Acknowledged, TotalLines);
                 }
             }
@@ -229,11 +298,12 @@ public sealed class GrblStreamer
                                 "That's electrical, not the design: usually the USB link or the controller's power dropping " +
                                 "when the laser fires hard. Try a short USB cable with a ferrite bead, a different USB port, " +
                                 "and check the power supply and its connector.";
+                        Trace('#', "controller reset during job");
                         SetState(StreamState.Faulted);
                     }
                 }
                 MessageReceived?.Invoke(line);
-                if (reset != null) MessageReceived?.Invoke(reset);
+                if (reset != null) { MessageReceived?.Invoke(reset); Incident?.Invoke(reset); }
                 return;
             }
             if (line.StartsWith("ALARM:", StringComparison.Ordinal))
@@ -291,12 +361,25 @@ public sealed class GrblStreamer
     {
         lock (_gate)
         {
-            if (State != StreamState.Running || _inFlight.Count == 0) { _idleReports = 0; return null; }
+            if (State != StreamState.Running) { _idleReports = 0; return null; }
+            if (_inFlight.Count == 0 && _nextToSend >= _lines.Count) { _idleReports = 0; return null; }
             if (!string.Equals(st.State, "Idle", StringComparison.OrdinalIgnoreCase)) { _idleReports = 0; return null; }
             _idleReports++;
             if (_idleReports < 2 || Clock() - _lastActivityMs < StallRecoveryMs) return null;
 
+            if (_inFlight.Count == 0)
+            {
+                // Nothing awaiting a reply, lines left to send, and yet nothing went out: never expected, but if it
+                // happens the job must not sit there silently. Start sending again.
+                Trace('#', "idle with nothing in flight: resuming sending");
+                _idleReports = 0;
+                _lastActivityMs = Clock();
+                Pump();
+                return $"The job had stopped sending at {Where()} with nothing outstanding; sending resumed.";
+            }
+
             int lost = _inFlight.Count;
+            Trace('#', $"idle with {lost} line(s) unacknowledged: counting them as done");
             _inFlight.Clear();
             _bytesInFlight = 0;
             Acknowledged = Math.Min(_nextToSend, Acknowledged + lost);
@@ -319,6 +402,7 @@ public sealed class GrblStreamer
             int len = _lines[_nextToSend].Length + 1;
             if (_bytesInFlight + len > _bufferSize && _inFlight.Count > 0) break;
             sb.Append(_lines[_nextToSend]).Append('\n');
+            Trace('>', $"[{_nextToSend + 1}] {_lines[_nextToSend]}");
             _inFlight.Enqueue(len);
             _bytesInFlight += len;
             _nextToSend++;
@@ -333,6 +417,7 @@ public sealed class GrblStreamer
     private void SetState(StreamState s)
     {
         if (State == s) return;
+        Trace('#', $"state {State} -> {s}");
         State = s;
         StateChanged?.Invoke(s);
     }

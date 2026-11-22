@@ -2,11 +2,16 @@
 
 All notable changes to A·S·D Lasercraft (formerly LaserForge). Versions follow [semantic versioning](https://semver.org).
 
-## [0.5.3] – 2026-11-21
+## [0.5.3] – 2026-11-22
 
-### Fixed – jobs that still stopped at the same point
-- 0.5.2 didn't cure it, because the stop wasn't lost replies: if the controller restarts mid-job (a USB or power glitch, typically where the laser fires hardest, hence the same spot each time) the app cleared its counters but stayed on "Running" forever, and the lost-reply recovery couldn't kick in.
-- A controller restart, a USB link that goes silent (no reply to status polls for 4 s), or an Alarm during a job now stops the job straight away, with a message in the console saying which line it reached and what to check.
+### Fixed – long jobs hanging part way through (for real this time)
+- 0.5.2 didn't cure it: a dithered photo job still hung at a different point each run, with the laser Idle and nothing in the console. The same G-code ran start to finish in LaserGRBL on the same laptop, cable and laser, so the fault was in how the app talked to the port. Reading and writing shared locks, so one slow write (more likely on a cold laptop running on battery) could freeze both directions, the 0.5.2 safety net included.
+- The serial link now runs on two dedicated threads, the way LaserGRBL does it: one only reads, one only writes. Sending a line just queues it and never blocks, so replies keep flowing whatever the port is doing. Stop, pause and status polls jump the queue.
+- A job can no longer hang silently. A controller restart, a USB link that goes quiet for 4 s, a write the port won't accept for 5 s, a pulled cable, or an Alarm during a job each stop the job straight away, with a console message saying which line it reached and what to check.
+- If the app ever has to recover or stop a job by itself, it saves a diagnostic log (the last few hundred lines sent and received, plus its internal counters) to `%LOCALAPPDATA%\ASD Lasercraft\logs` and says where in the console.
+
+### Engineering
+- New `QueuedLineTransport` in the core, tested with a fake port that can hang or fail: replies keep arriving while a write is stuck, split chunks join in order, real-time bytes jump the queue, and a port failure stops the job. 148 tests in total.
 
 ## [0.5.2] – 2026-11-20
 

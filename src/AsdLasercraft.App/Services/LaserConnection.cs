@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Threading;
 using AsdLasercraft.Core.Grbl;
 
@@ -74,6 +75,8 @@ public sealed class LaserConnection : IDisposable
         s.ErrorReported += (line, err) => _ui.InvokeAsync(() => ErrorReported?.Invoke(line, err));
         s.MessageReceived += msg => _ui.InvokeAsync(() => Log?.Invoke(msg));
         s.StatusReceived += st => _ui.InvokeAsync(() => StatusReceived?.Invoke(st));
+        s.Incident += reason => SaveDiagnostics(s, reason);
+        if (_serial != null) _serial.Faulted += msg => s.Abort(msg);
         Streamer = s;
         PortName = port;
         _simulator?.StartRealtime();
@@ -92,6 +95,39 @@ public sealed class LaserConnection : IDisposable
         _simulator = null;
         PortName = null;
         ConnectionChanged?.Invoke();
+    }
+
+    /// <summary>Folder where stall diagnostics are written.</summary>
+    public static string LogFolder => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ASD Lasercraft", "logs");
+
+    // Writes the streamer's recent traffic to a file whenever it had to recover or stop a job by itself,
+    // so a stall can be diagnosed from the file instead of guessed at. Runs off the serial threads.
+    private long _lastDiagnosticsMs = long.MinValue / 2;
+
+    private void SaveDiagnostics(GrblStreamer s, string reason)
+    {
+        // A flaky link can recover every few seconds; one file per 30 s is plenty. Stopped jobs always get one.
+        long now = Environment.TickCount64;
+        if (s.State != StreamState.Faulted && now - Interlocked.Read(ref _lastDiagnosticsMs) < 30_000) return;
+        Interlocked.Exchange(ref _lastDiagnosticsMs, now);
+        string text = s.Diagnostics(reason + $" (transport queue: {_serial?.QueuedItems ?? 0} item(s))");
+        Task.Run(() =>
+        {
+            try
+            {
+                Directory.CreateDirectory(LogFolder);
+                foreach (var old in new DirectoryInfo(LogFolder).GetFiles("stall-*.log")
+                             .OrderByDescending(f => f.Name).Skip(20)) old.Delete();
+                string path = Path.Combine(LogFolder, $"stall-{DateTime.Now:yyyyMMdd-HHmmss-fff}.log");
+                File.WriteAllText(path, $"{AsdLasercraft.Core.AppInfo.ShortName} {AsdLasercraft.Core.AppInfo.Version}, port {PortName}\n" + text);
+                _ui.InvokeAsync(() => Log?.Invoke($"Diagnostic log saved: {path}"));
+            }
+            catch (Exception ex)
+            {
+                _ui.InvokeAsync(() => Log?.Invoke("Couldn't save the diagnostic log: " + ex.Message));
+            }
+        });
     }
 
     /// <summary>Simulator speed multiplier (only affects the simulator).</summary>

@@ -4,78 +4,69 @@ using AsdLasercraft.Core.Grbl;
 
 namespace AsdLasercraft.App.Services;
 
-/// <summary>USB serial link to the GRBL controller. Events are raised on a background thread.</summary>
+/// <summary>
+/// USB serial link to the GRBL controller. Reading and writing each run on their own thread
+/// (see <see cref="QueuedLineTransport"/>); events are raised on the reader thread.
+/// </summary>
 public sealed class SerialTransport : ILineTransport, IDisposable
 {
     private readonly SerialPort _port;
-    private readonly StringBuilder _rx = new();
-    private readonly object _writeLock = new();
+    private QueuedLineTransport? _queue;
 
     public event Action<string>? LineReceived;
+
+    /// <summary>Raised once if the port fails (cable pulled, driver error, writes stuck).</summary>
+    public event Action<string>? Faulted;
 
     public SerialTransport(string portName, int baudRate)
     {
         _port = new SerialPort(portName, baudRate, Parity.None, 8, StopBits.One)
         {
-            // Latin-1 keeps real-time bytes above 0x7F (e.g. 0x85 jog cancel) intact.
             Encoding = Encoding.Latin1,
             NewLine = "\n",
             DtrEnable = true,
             RtsEnable = true,
-            ReadTimeout = 500,
-            WriteTimeout = 2000,
+            ReadTimeout = 100,    // the reader thread wakes up this often to check for shutdown
+            WriteTimeout = 5000,  // a write stuck this long means the laser has stopped accepting data
+            ReadBufferSize = 64 * 1024,
         };
-        _port.DataReceived += OnData;
     }
 
     public static string[] AvailablePorts() => SerialPort.GetPortNames().OrderBy(p => p).ToArray();
 
     public bool IsOpen => _port.IsOpen;
 
-    public void Open() => _port.Open();
+    public int QueuedItems => _queue?.QueuedItems ?? 0;
 
-    public void Write(string text)
+    public void Open()
     {
-        lock (_writeLock)
-        {
-            if (_port.IsOpen) _port.Write(text);
-        }
+        _port.Open();
+        _queue = new QueuedLineTransport(new PortIo(_port), _port.PortName);
+        _queue.LineReceived += l => LineReceived?.Invoke(l);
+        _queue.Faulted += m => Faulted?.Invoke(m);
+        _queue.Start();
     }
 
-    // Windows raises DataReceived on thread-pool threads, so two handlers can run at once. Reading, splitting and
-    // dispatching all happen under one lock so chunks are never stitched together out of order (which garbles an
-    // "ok" and used to make the streamer wait forever) and lines reach the streamer in the order they arrived.
-    private readonly object _readLock = new();
-
-    private void OnData(object sender, SerialDataReceivedEventArgs e)
-    {
-        lock (_readLock)
-        {
-            string chunk;
-            try
-            {
-                if (!_port.IsOpen) return;
-                chunk = _port.ReadExisting();
-            }
-            catch (Exception) { return; }
-
-            foreach (char c in chunk)
-            {
-                if (c == '\n')
-                {
-                    var line = _rx.ToString().TrimEnd('\r');
-                    _rx.Clear();
-                    LineReceived?.Invoke(line);
-                }
-                else _rx.Append(c);
-            }
-        }
-    }
+    public void Write(string text) => _queue?.Write(text);
 
     public void Dispose()
     {
-        _port.DataReceived -= OnData;
+        _queue?.Dispose();
         try { if (_port.IsOpen) _port.Close(); } catch { /* port may already be gone (cable pulled) */ }
         _port.Dispose();
+    }
+
+    private sealed class PortIo : IPortIo
+    {
+        private readonly SerialPort _p;
+        public PortIo(SerialPort p) => _p = p;
+
+        public int Read(byte[] buffer, int offset, int count)
+        {
+            try { return _p.Read(buffer, offset, count); }
+            catch (TimeoutException) { return 0; }
+        }
+
+        public void Write(byte[] data) => _p.Write(data, 0, data.Length);
     }
 }
